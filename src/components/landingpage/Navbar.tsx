@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, Menu, X } from 'lucide-react';
+import { useUser, UserButton } from '@stackframe/stack';
 
 interface NavLink {
   label: string;
@@ -17,6 +18,7 @@ const navLinks: NavLink[] = [
 ];
 
 export const Navbar = () => {
+  const user = useUser();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
@@ -65,15 +67,24 @@ export const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <a
-              href="#"
-              className="px-4 py-2 text-sm font-medium text-[rgb(218,218,218)] rounded-lg transition-all duration-200 hover:text-white"
-            >
-              Sign In
-            </a>
-            <button className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] transition-all duration-200 hover:bg-[rgb(166,190,21)] hover:shadow-[0_8px_25px_rgba(218,255,1,0.3)] hover:-translate-y-0.5 active:translate-y-0">
-              Get Started
-            </button>
+            {user ? (
+              <UserButton showUserInfo={false} />
+            ) : (
+              <>
+                <a
+                  href="/handler/sign-in"
+                  className="px-4 py-2 text-sm font-medium text-[rgb(218,218,218)] rounded-lg transition-all duration-200 hover:text-white"
+                >
+                  Sign In
+                </a>
+                <a
+                  href="/handler/sign-up"
+                  className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] transition-all duration-200 hover:bg-[rgb(166,190,21)] hover:shadow-[0_8px_25px_rgba(218,255,1,0.3)] hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  Sign Up
+                </a>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -108,9 +119,26 @@ export const Navbar = () => {
                 </a>
               ))}
               <div className="mt-4 pt-4 border-t border-[rgba(255,255,255,0.1)] flex flex-col gap-3">
-                <button className="w-full py-3 text-base font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] transition-all duration-200 hover:bg-[rgb(166,190,21)]">
-                  Get Started
-                </button>
+                {user ? (
+                  <div className="flex justify-center">
+                    <UserButton showUserInfo={true} />
+                  </div>
+                ) : (
+                  <>
+                    <a
+                      href="/handler/sign-in"
+                      className="w-full py-3 text-base font-medium text-center rounded-xl border-2 border-[rgba(255,255,255,0.2)] text-white transition-all duration-200 hover:border-[rgba(255,255,255,0.4)]"
+                    >
+                      Sign In
+                    </a>
+                    <a
+                      href="/handler/sign-up"
+                      className="w-full py-3 text-base font-semibold text-center rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] transition-all duration-200 hover:bg-[rgb(166,190,21)]"
+                    >
+                      Sign Up
+                    </a>
+                  </>
+                )}
               </div>
             </nav>
           </motion.div>
