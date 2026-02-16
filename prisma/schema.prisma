@@ -1,0 +1,35 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// USER - Synced with Stack Auth
+// ============================================
+model User {
+  id                String    @id @default(cuid())
+  stackAuthId       String    @unique @map("stack_auth_id") // Stack Auth user ID
+  email             String    @unique
+  displayName       String?   @map("display_name")
+  profileImageUrl   String?   @map("profile_image_url")
+  bio               String?
+  
+  // Social links
+  githubUrl         String?   @map("github_url")
+  linkedinUrl       String?   @map("linkedin_url")
+  twitterUrl        String?   @map("twitter_url")
+  websiteUrl        String?   @map("website_url")
+  
+  // Timestamps
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  lastLoginAt       DateTime? @map("last_login_at")
+  
+  @@map("users")
+}

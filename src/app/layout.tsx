@@ -1,8 +1,9 @@
-import type {Metadata} from 'next';
+import type { Metadata } from 'next';
 import { StackProvider, StackTheme } from "@stackframe/stack";
 import { stackClientApp } from "../stack/client";
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
+import { UserSyncProvider } from "@/components/providers/UserSyncProvider";
 
 export const metadata: Metadata = {
   title: 'Spark',
@@ -49,7 +50,9 @@ export default function RootLayout({
       <body className="font-body antialiased">
         <StackProvider app={stackClientApp}>
           <StackTheme theme={stackTheme}>
-            {children}
+            <UserSyncProvider>
+              {children}
+            </UserSyncProvider>
             <Toaster />
           </StackTheme>
         </StackProvider>
