@@ -10,11 +10,21 @@ import type {
   ParticipationStatus,
   StaffRole,
   SponsorTier,
+  TeamInviteStatus,
 } from '@prisma/client';
 
 // ============================================
 // HELPERS
 // ============================================
+function generateInviteCodeString(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar chars
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
 async function getAuthenticatedUser() {
   const stackUser = await stackServerApp.getUser();
   if (!stackUser) throw new Error('Not authenticated');
@@ -407,11 +417,22 @@ export async function registerTeam(
     });
     if (existing) throw new Error('You are already registered for this event');
 
+    // Generate unique invite code
+    let inviteCode: string;
+    let attempts = 0;
+    do {
+      inviteCode = generateInviteCodeString();
+      const existingCode = await prisma.team.findUnique({ where: { inviteCode } });
+      if (!existingCode) break;
+      attempts++;
+    } while (attempts < 10);
+
     const team = await prisma.team.create({
       data: {
         eventId,
         name: data.teamName,
         description: data.description,
+        inviteCode,
         members: {
           create: {
             userId: user.id,
@@ -776,5 +797,592 @@ export async function getEventAnalytics(eventId: string) {
   } catch (error) {
     console.error('Failed to get analytics:', error);
     return { success: false, error: (error as Error).message };
+  }
+}
+
+// ============================================
+// TEAM MANAGEMENT
+// ============================================
+export async function getMyTeamForEvent(eventId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const membership = await prisma.teamMember.findFirst({
+      where: {
+        userId: user.id,
+        team: { eventId },
+      },
+      include: {
+        team: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            inviteCode: true,
+            isSubmitted: true,
+            eventId: true,
+            createdAt: true,
+            updatedAt: true,
+            members: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    displayName: true,
+                    email: true,
+                    profileImageUrl: true,
+                  },
+                },
+              },
+              orderBy: { joinedAt: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      success: true,
+      team: membership?.team || null,
+      isLeader: membership?.isLeader || false,
+    };
+  } catch {
+    return { success: true, team: null, isLeader: false };
+  }
+}
+
+export async function addTeamMember(teamId: string, email: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: {
+        members: true,
+        event: { select: { maxTeamSize: true, id: true } },
+      },
+    });
+    if (!team) throw new Error('Team not found');
+
+    const self = team.members.find((m) => m.userId === user.id);
+    if (!self?.isLeader) throw new Error('Only the team leader can add members');
+
+    if (team.members.length >= team.event.maxTeamSize) {
+      throw new Error(`Team is at maximum capacity (${team.event.maxTeamSize} members)`);
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { email } });
+    if (!targetUser) throw new Error('No user found with that email');
+
+    const existing = await prisma.teamMember.findFirst({
+      where: { userId: targetUser.id, team: { eventId: team.eventId } },
+    });
+    if (existing) throw new Error('This user is already in a team for this event');
+
+    await prisma.teamMember.create({
+      data: { teamId, userId: targetUser.id },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        eventId: team.eventId,
+        userId: user.id,
+        action: 'MEMBER_ADDED',
+        details: `${targetUser.displayName || targetUser.email} added to "${team.name}"`,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to add team member:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function removeTeamMember(teamId: string, memberId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: { members: { include: { user: true } } },
+    });
+    if (!team) throw new Error('Team not found');
+
+    const self = team.members.find((m) => m.userId === user.id);
+    if (!self?.isLeader) throw new Error('Only the team leader can remove members');
+
+    const target = team.members.find((m) => m.id === memberId);
+    if (!target) throw new Error('Member not found');
+    if (target.isLeader) throw new Error('Cannot remove the team leader');
+
+    await prisma.teamMember.delete({ where: { id: memberId } });
+
+    await prisma.activityLog.create({
+      data: {
+        eventId: team.eventId,
+        userId: user.id,
+        action: 'MEMBER_REMOVED',
+        details: `${target.user.displayName || target.user.email} removed from "${team.name}"`,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to remove team member:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function leaveTeam(teamId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const membership = await prisma.teamMember.findFirst({
+      where: { teamId, userId: user.id },
+    });
+    if (!membership) throw new Error('You are not in this team');
+    if (membership.isLeader) throw new Error('Team leader cannot leave. Delete the team instead.');
+
+    await prisma.teamMember.delete({ where: { id: membership.id } });
+
+    const team = await prisma.team.findUnique({ where: { id: teamId } });
+    if (team) {
+      await prisma.activityLog.create({
+        data: {
+          eventId: team.eventId,
+          userId: user.id,
+          action: 'MEMBER_LEFT',
+          details: `Left team "${team.name}"`,
+        },
+      });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to leave team:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function deleteTeam(teamId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: { members: true },
+    });
+    if (!team) throw new Error('Team not found');
+
+    const self = team.members.find((m) => m.userId === user.id);
+    if (!self?.isLeader) throw new Error('Only the team leader can delete the team');
+
+    const teamName = team.name;
+    const eventId = team.eventId;
+
+    await prisma.team.delete({ where: { id: teamId } });
+
+    await prisma.activityLog.create({
+      data: {
+        eventId,
+        userId: user.id,
+        action: 'TEAM_DELETED',
+        details: `Team "${teamName}" was deleted`,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to delete team:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function joinTeamByCode(eventId: string, code: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    
+    const team = await prisma.team.findFirst({
+      where: { inviteCode: code.toUpperCase(), eventId },
+      include: { members: true, event: { select: { maxTeamSize: true } } },
+    });
+    if (!team) throw new Error('Invalid invite code');
+
+    if (team.isSubmitted) {
+      throw new Error('This team has already been submitted and is no longer accepting new members');
+    }
+
+    if (team.members.length >= team.event.maxTeamSize) {
+      throw new Error('This team is already full');
+    }
+
+    const existing = await prisma.teamMember.findFirst({
+      where: { userId: user.id, team: { eventId: team.eventId } },
+    });
+    if (existing) throw new Error('You are already in a team for this event');
+
+    // Join team (code remains valid until team is submitted)
+    await prisma.teamMember.create({
+      data: { teamId: team.id, userId: user.id },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        eventId: team.eventId,
+        userId: user.id,
+        action: 'TEAM_JOINED',
+        details: `Joined team "${team.name}" via invite code`,
+      },
+    });
+
+    return { success: true, teamName: team.name };
+  } catch (error) {
+    console.error('Failed to join team by code:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function regenerateInviteCode(teamId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: { members: true },
+    });
+    if (!team) throw new Error('Team not found');
+
+    const self = team.members.find((m) => m.userId === user.id);
+    if (!self?.isLeader) throw new Error('Only the team leader can regenerate invite code');
+
+    // Generate new unique code
+    let inviteCode: string;
+    let attempts = 0;
+    do {
+      inviteCode = generateInviteCodeString();
+      const existingCode = await prisma.team.findUnique({ where: { inviteCode } });
+      if (!existingCode) break;
+      attempts++;
+    } while (attempts < 10);
+
+    await prisma.team.update({
+      where: { id: teamId },
+      data: { inviteCode },
+    });
+
+    return { success: true, inviteCode };
+  } catch (error) {
+    console.error('Failed to regenerate invite code:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+// ============================================
+// TEAM INVITE SYSTEM
+// ============================================
+export async function sendTeamInvite(teamId: string, email: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: {
+        members: true,
+        event: { select: { maxTeamSize: true, id: true } },
+      },
+    });
+    if (!team) throw new Error('Team not found');
+    if (team.isSubmitted) throw new Error('Team is already submitted');
+
+    const self = team.members.find((m) => m.userId === user.id);
+    if (!self?.isLeader) throw new Error('Only the team leader can send invites');
+
+    if (team.members.length >= team.event.maxTeamSize) {
+      throw new Error(`Team is at maximum capacity (${team.event.maxTeamSize} members)`);
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { email } });
+    if (!targetUser) throw new Error('No user found with that email');
+
+    if (targetUser.id === user.id) throw new Error('You cannot invite yourself');
+
+    const existingMember = await prisma.teamMember.findFirst({
+      where: { userId: targetUser.id, team: { eventId: team.eventId } },
+    });
+    if (existingMember) throw new Error('This user is already in a team for this event');
+
+    // Check for existing pending invite
+    const existingInvite = await prisma.teamInvite.findUnique({
+      where: { teamId_invitedUserId: { teamId, invitedUserId: targetUser.id } },
+    });
+    if (existingInvite && existingInvite.status === 'PENDING') {
+      throw new Error('An invite has already been sent to this user');
+    }
+
+    // Upsert invite (in case a previously rejected invite exists)
+    await prisma.teamInvite.upsert({
+      where: { teamId_invitedUserId: { teamId, invitedUserId: targetUser.id } },
+      update: { status: 'PENDING', invitedByUserId: user.id },
+      create: {
+        teamId,
+        invitedUserId: targetUser.id,
+        invitedByUserId: user.id,
+        status: 'PENDING',
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        eventId: team.eventId,
+        userId: user.id,
+        action: 'INVITE_SENT',
+        details: `Invite sent to ${targetUser.displayName || targetUser.email} for team "${team.name}"`,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to send invite:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function getMyInvitesForEvent(eventId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const invites = await prisma.teamInvite.findMany({
+      where: {
+        invitedUserId: user.id,
+        status: 'PENDING',
+        team: { eventId },
+      },
+      include: {
+        team: {
+          select: {
+            id: true,
+            name: true,
+            members: {
+              include: {
+                user: { select: { id: true, displayName: true, email: true, profileImageUrl: true } },
+              },
+            },
+            event: { select: { maxTeamSize: true, minTeamSize: true } },
+          },
+        },
+        invitedByUser: {
+          select: { displayName: true, email: true, profileImageUrl: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return { success: true, invites };
+  } catch {
+    return { success: true, invites: [] };
+  }
+}
+
+export async function getPendingInvitesForTeam(teamId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: { members: true },
+    });
+    if (!team) throw new Error('Team not found');
+
+    const self = team.members.find((m) => m.userId === user.id);
+    if (!self?.isLeader) throw new Error('Only the leader can view pending invites');
+
+    const invites = await prisma.teamInvite.findMany({
+      where: { teamId, status: 'PENDING' },
+      include: {
+        invitedUser: {
+          select: { id: true, displayName: true, email: true, profileImageUrl: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return { success: true, invites };
+  } catch (error) {
+    console.error('Failed to get pending invites:', error);
+    return { success: false, invites: [], error: (error as Error).message };
+  }
+}
+
+export async function acceptTeamInvite(inviteId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const invite = await prisma.teamInvite.findUnique({
+      where: { id: inviteId },
+      include: {
+        team: {
+          include: {
+            members: true,
+            event: { select: { maxTeamSize: true, id: true } },
+          },
+        },
+      },
+    });
+    if (!invite) throw new Error('Invite not found');
+    if (invite.invitedUserId !== user.id) throw new Error('This invite is not for you');
+    if (invite.status !== 'PENDING') throw new Error('Invite is no longer pending');
+    if (invite.team.isSubmitted) throw new Error('Team is already submitted');
+
+    if (invite.team.members.length >= invite.team.event.maxTeamSize) {
+      throw new Error('Team is already full');
+    }
+
+    // Check if user already in a team for this event
+    const existing = await prisma.teamMember.findFirst({
+      where: { userId: user.id, team: { eventId: invite.team.eventId } },
+    });
+    if (existing) throw new Error('You are already in a team for this event');
+
+    // Add to team and update invite status
+    await prisma.teamMember.create({
+      data: { teamId: invite.teamId, userId: user.id },
+    });
+
+    await prisma.teamInvite.update({
+      where: { id: inviteId },
+      data: { status: 'ACCEPTED' },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        eventId: invite.team.eventId,
+        userId: user.id,
+        action: 'INVITE_ACCEPTED',
+        details: `Accepted invite to team "${invite.team.name}"`,
+      },
+    });
+
+    return { success: true, teamName: invite.team.name };
+  } catch (error) {
+    console.error('Failed to accept invite:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function rejectTeamInvite(inviteId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const invite = await prisma.teamInvite.findUnique({
+      where: { id: inviteId },
+      include: { team: true },
+    });
+    if (!invite) throw new Error('Invite not found');
+    if (invite.invitedUserId !== user.id) throw new Error('This invite is not for you');
+    if (invite.status !== 'PENDING') throw new Error('Invite is no longer pending');
+
+    await prisma.teamInvite.update({
+      where: { id: inviteId },
+      data: { status: 'REJECTED' },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to reject invite:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function cancelTeamInvite(inviteId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const invite = await prisma.teamInvite.findUnique({
+      where: { id: inviteId },
+      include: { team: { include: { members: true } } },
+    });
+    if (!invite) throw new Error('Invite not found');
+
+    const self = invite.team.members.find((m) => m.userId === user.id);
+    if (!self?.isLeader) throw new Error('Only the team leader can cancel invites');
+
+    await prisma.teamInvite.delete({ where: { id: inviteId } });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to cancel invite:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function submitTeam(teamId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: {
+        members: true,
+        event: { select: { minTeamSize: true, id: true } },
+      },
+    });
+    if (!team) throw new Error('Team not found');
+
+    const self = team.members.find((m) => m.userId === user.id);
+    if (!self?.isLeader) throw new Error('Only the team leader can submit the team');
+
+    if (team.isSubmitted) throw new Error('Team is already submitted');
+
+    if (team.members.length < team.event.minTeamSize) {
+      throw new Error(`Team needs at least ${team.event.minTeamSize} members to submit`);
+    }
+
+    // Submit team: set flag, delete invite code, cancel pending invites
+    await prisma.team.update({
+      where: { id: teamId },
+      data: { isSubmitted: true, inviteCode: null },
+    });
+
+    // Cancel all pending invites
+    await prisma.teamInvite.updateMany({
+      where: { teamId, status: 'PENDING' },
+      data: { status: 'REJECTED' },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        eventId: team.eventId,
+        userId: user.id,
+        action: 'TEAM_SUBMITTED',
+        details: `Team "${team.name}" submitted`,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to submit team:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function getMyParticipatingEvents() {
+  try {
+    const user = await getAuthenticatedUser();
+    const memberships = await prisma.teamMember.findMany({
+      where: { userId: user.id },
+      include: {
+        team: {
+          include: {
+            event: {
+              select: {
+                id: true,
+                title: true,
+                type: true,
+                status: true,
+                startDate: true,
+                coverImage: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const events = memberships.map((m) => m.team.event);
+    // Deduplicate by event id
+    const unique = Array.from(new Map(events.map((e) => [e.id, e])).values());
+
+    return { success: true, events: unique };
+  } catch (error) {
+    console.error('Failed to get participating events:', error);
+    return { success: false, events: [], error: (error as Error).message };
   }
 }

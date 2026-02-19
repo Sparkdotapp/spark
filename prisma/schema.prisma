@@ -58,6 +58,12 @@ enum SponsorTier {
   PARTNER
 }
 
+enum TeamInviteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 // ============================================
 // USER - Synced with Stack Auth
 // ============================================
@@ -86,6 +92,8 @@ model User {
   teamMemberships   TeamMember[]
   evaluations       Evaluation[]
   activityLogs      ActivityLog[]
+  receivedInvites   TeamInvite[]      @relation("ReceivedInvites")
+  sentInvites       TeamInvite[]      @relation("SentInvites")
 
   @@map("users")
 }
@@ -188,6 +196,8 @@ model Team {
 
   name              String
   description       String?
+  inviteCode        String?      @unique @map("invite_code")
+  isSubmitted       Boolean      @default(false) @map("is_submitted")
 
   createdAt         DateTime     @default(now()) @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
@@ -195,6 +205,7 @@ model Team {
   // Relations
   members           TeamMember[]
   participations    RoundParticipation[]
+  invites           TeamInvite[]
 
   @@unique([eventId, name])
   @@index([eventId])
@@ -331,6 +342,26 @@ model EventStaff {
   @@index([eventId])
   @@index([userId])
   @@map("event_staff")
+}
+
+// ============================================
+// TEAM INVITE
+// ============================================
+model TeamInvite {
+  id              String           @id @default(cuid())
+  teamId          String           @map("team_id")
+  team            Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedUserId   String           @map("invited_user_id")
+  invitedUser     User             @relation("ReceivedInvites", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  invitedByUserId String           @map("invited_by_user_id")
+  invitedByUser   User             @relation("SentInvites", fields: [invitedByUserId], references: [id])
+
+  status          TeamInviteStatus @default(PENDING)
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  @@unique([teamId, invitedUserId])
+  @@index([invitedUserId])
+  @@map("team_invites")
 }
 
 // ============================================
