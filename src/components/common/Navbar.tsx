@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Menu, X } from 'lucide-react';
+import { Zap, Menu, X, Plus, LayoutDashboard, ChevronDown } from 'lucide-react';
 import { useUser, UserButton } from '@stackframe/stack';
+import Link from 'next/link';
 
 interface NavLink {
   label: string;
@@ -67,6 +68,31 @@ export const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
+            {user && (
+              <div className="relative group">
+                <button className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] transition-all duration-200 hover:bg-[rgb(166,190,21)] hover:shadow-[0_8px_25px_rgba(218,255,1,0.3)]">
+                  <Plus className="w-4 h-4" />
+                  Host
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+                <div className="absolute right-0 top-full mt-2 w-48 py-2 rounded-xl bg-[rgb(26,28,30)] border border-[rgba(255,255,255,0.08)] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <Link
+                    href="/events/host"
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-[rgb(218,218,218)] hover:text-white hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+                  >
+                    <Plus className="w-4 h-4 text-[#DAFF01]" />
+                    Host an Event
+                  </Link>
+                  <Link
+                    href="/events/dashboard"
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-[rgb(218,218,218)] hover:text-white hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+                  >
+                    <LayoutDashboard className="w-4 h-4 text-[#DAFF01]" />
+                    My Events
+                  </Link>
+                </div>
+              </div>
+            )}
             {user ? (
               <UserButton showUserInfo={false} />
             ) : (
@@ -120,9 +146,25 @@ export const Navbar = () => {
               ))}
               <div className="mt-4 pt-4 border-t border-[rgba(255,255,255,0.1)] flex flex-col gap-3">
                 {user ? (
-                  <div className="flex justify-center">
-                    <UserButton showUserInfo={true} />
-                  </div>
+                  <>
+                    <Link
+                      href="/events/host"
+                      onClick={() => setMobileOpen(false)}
+                      className="w-full py-3 text-base font-semibold text-center rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] transition-all duration-200 hover:bg-[rgb(166,190,21)]"
+                    >
+                      Host an Event
+                    </Link>
+                    <Link
+                      href="/events/dashboard"
+                      onClick={() => setMobileOpen(false)}
+                      className="w-full py-3 text-base font-medium text-center rounded-xl border-2 border-[rgba(255,255,255,0.2)] text-white transition-all duration-200 hover:border-[rgba(255,255,255,0.4)]"
+                    >
+                      My Events
+                    </Link>
+                    <div className="flex justify-center mt-2">
+                      <UserButton showUserInfo={true} />
+                    </div>
+                  </>
                 ) : (
                   <>
                     <a

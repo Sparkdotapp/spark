@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { PrismaNeonHttp } from '@prisma/adapter-neon';
+import { PrismaNeon } from '@prisma/adapter-neon';
 
 const globalForPrisma = globalThis as unknown as {
     prisma: PrismaClient | undefined;
@@ -12,8 +12,8 @@ function createPrismaClient() {
         throw new Error('DATABASE_URL environment variable is not set');
     }
 
-    // Prisma 7 + Neon: use PrismaNeonHttp with the connection string directly
-    const adapter = new PrismaNeonHttp(connectionString, {});
+    // Prisma 7 + Neon: use PrismaNeon (WebSocket) to support transactions
+    const adapter = new PrismaNeon({ connectionString });
 
     return new PrismaClient({
         adapter: adapter as any,

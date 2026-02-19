@@ -53,19 +53,27 @@ export async function getUserWithRelations(stackAuthId: string) {
     return prisma.user.findUnique({
         where: { stackAuthId },
         include: {
-            projects: true,
-            projectMembers: {
-                include: { project: true },
-            },
-            eventRegistrations: {
-                include: { event: true },
-            },
-            communityMembers: {
-                include: { community: true },
-            },
-            posts: {
+            hostedEvents: {
                 orderBy: { createdAt: 'desc' },
                 take: 10,
+            },
+            staffRoles: {
+                include: { event: true },
+            },
+            teamMemberships: {
+                include: {
+                    team: {
+                        include: { event: true },
+                    },
+                },
+            },
+            evaluations: {
+                orderBy: { createdAt: 'desc' },
+                take: 10,
+            },
+            activityLogs: {
+                orderBy: { createdAt: 'desc' },
+                take: 20,
             },
         },
     });

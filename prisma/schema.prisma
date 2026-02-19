@@ -10,26 +10,346 @@ datasource db {
 }
 
 // ============================================
+// ENUMS
+// ============================================
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum EventType {
+  HACKATHON
+  CONFERENCE
+  WORKSHOP
+  MEETUP
+  COMPETITION
+  WEBINAR
+}
+
+enum RoundStatus {
+  UPCOMING
+  ACTIVE
+  EVALUATING
+  COMPLETED
+}
+
+enum ParticipationStatus {
+  REGISTERED
+  SUBMITTED
+  EVALUATED
+  PROMOTED
+  ELIMINATED
+}
+
+enum StaffRole {
+  ADMIN
+  EVALUATOR
+  MODERATOR
+}
+
+enum SponsorTier {
+  TITLE
+  GOLD
+  SILVER
+  BRONZE
+  PARTNER
+}
+
+// ============================================
 // USER - Synced with Stack Auth
 // ============================================
 model User {
   id                String    @id @default(cuid())
-  stackAuthId       String    @unique @map("stack_auth_id") // Stack Auth user ID
+  stackAuthId       String    @unique @map("stack_auth_id")
   email             String    @unique
   displayName       String?   @map("display_name")
   profileImageUrl   String?   @map("profile_image_url")
   bio               String?
-  
+
   // Social links
   githubUrl         String?   @map("github_url")
   linkedinUrl       String?   @map("linkedin_url")
   twitterUrl        String?   @map("twitter_url")
   websiteUrl        String?   @map("website_url")
-  
+
   // Timestamps
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
   lastLoginAt       DateTime? @map("last_login_at")
-  
+
+  // Relations
+  hostedEvents      Event[]           @relation("EventHost")
+  staffRoles        EventStaff[]
+  teamMemberships   TeamMember[]
+  evaluations       Evaluation[]
+  activityLogs      ActivityLog[]
+
   @@map("users")
+}
+
+// ============================================
+// EVENT
+// ============================================
+model Event {
+  id                String       @id @default(cuid())
+  title             String
+  tagline           String?
+  description       String
+  type              EventType    @default(HACKATHON)
+  status            EventStatus  @default(DRAFT)
+  coverImage        String?      @map("cover_image")
+
+  // Schedule
+  startDate         DateTime     @map("start_date")
+  endDate           DateTime     @map("end_date")
+  registrationStart DateTime?    @map("registration_start")
+  registrationEnd   DateTime?    @map("registration_end")
+
+  // Location
+  location          String?
+  isVirtual         Boolean      @default(true) @map("is_virtual")
+  virtualLink       String?      @map("virtual_link")
+
+  // Settings
+  maxTeamSize       Int          @default(4) @map("max_team_size")
+  minTeamSize       Int          @default(1) @map("min_team_size")
+  maxParticipants   Int?         @map("max_participants")
+  isPublic          Boolean      @default(true) @map("is_public")
+  requireApproval   Boolean      @default(false) @map("require_approval")
+
+  // Tags / Skills
+  tags              String[]     @default([])
+  skills            String[]     @default([])
+
+  // Host
+  hostId            String       @map("host_id")
+  host              User         @relation("EventHost", fields: [hostId], references: [id])
+
+  // Timestamps
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  rounds            Round[]
+  teams             Team[]
+  prizes            Prize[]
+  sponsors          Sponsor[]
+  staff             EventStaff[]
+  activityLogs      ActivityLog[]
+
+  @@index([hostId])
+  @@index([status])
+  @@index([type])
+  @@map("events")
+}
+
+// ============================================
+// ROUND
+// ============================================
+model Round {
+  id                String       @id @default(cuid())
+  eventId           String       @map("event_id")
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  title             String
+  description       String?
+  roundNumber       Int          @map("round_number")
+  status            RoundStatus  @default(UPCOMING)
+
+  startDate         DateTime?    @map("start_date")
+  endDate           DateTime?    @map("end_date")
+  submissionDeadline DateTime?   @map("submission_deadline")
+
+  // Evaluation criteria (JSON: [{name: string, maxScore: number, weight: number}])
+  criteria          Json?
+
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  participations    RoundParticipation[]
+  evaluations       Evaluation[]
+
+  @@unique([eventId, roundNumber])
+  @@index([eventId])
+  @@map("rounds")
+}
+
+// ============================================
+// TEAM
+// ============================================
+model Team {
+  id                String       @id @default(cuid())
+  eventId           String       @map("event_id")
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  name              String
+  description       String?
+
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  members           TeamMember[]
+  participations    RoundParticipation[]
+
+  @@unique([eventId, name])
+  @@index([eventId])
+  @@map("teams")
+}
+
+// ============================================
+// TEAM MEMBER
+// ============================================
+model TeamMember {
+  id                String       @id @default(cuid())
+  teamId            String       @map("team_id")
+  team              Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId            String       @map("user_id")
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isLeader          Boolean      @default(false) @map("is_leader")
+  joinedAt          DateTime     @default(now()) @map("joined_at")
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+// ============================================
+// ROUND PARTICIPATION (Team's status per round)
+// ============================================
+model RoundParticipation {
+  id                String              @id @default(cuid())
+  roundId           String              @map("round_id")
+  round             Round               @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  teamId            String              @map("team_id")
+  team              Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  status            ParticipationStatus @default(REGISTERED)
+  submissionUrl     String?             @map("submission_url")
+  submissionNotes   String?             @map("submission_notes")
+  submittedAt       DateTime?           @map("submitted_at")
+
+  // Aggregated score after evaluation
+  totalScore        Float?              @map("total_score")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  evaluations       Evaluation[]
+
+  @@unique([roundId, teamId])
+  @@index([roundId])
+  @@index([teamId])
+  @@map("round_participations")
+}
+
+// ============================================
+// EVALUATION
+// ============================================
+model Evaluation {
+  id                    String             @id @default(cuid())
+  roundId               String             @map("round_id")
+  round                 Round              @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participationId       String             @map("participation_id")
+  participation         RoundParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  evaluatorId           String             @map("evaluator_id")
+  evaluator             User               @relation(fields: [evaluatorId], references: [id])
+
+  // Scores JSON: [{criterionName: string, score: number}]
+  scores                Json
+  totalScore            Float              @map("total_score")
+  feedback              String?
+
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  @@unique([participationId, evaluatorId])
+  @@index([roundId])
+  @@index([evaluatorId])
+  @@map("evaluations")
+}
+
+// ============================================
+// PRIZE
+// ============================================
+model Prize {
+  id                String       @id @default(cuid())
+  eventId           String       @map("event_id")
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  title             String
+  description       String?
+  amount            String?
+  position          Int?
+  icon              String?
+
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  @@index([eventId])
+  @@map("prizes")
+}
+
+// ============================================
+// SPONSOR
+// ============================================
+model Sponsor {
+  id                String       @id @default(cuid())
+  eventId           String       @map("event_id")
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  name              String
+  logoUrl           String?      @map("logo_url")
+  websiteUrl        String?      @map("website_url")
+  tier              SponsorTier  @default(PARTNER)
+
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  @@index([eventId])
+  @@map("sponsors")
+}
+
+// ============================================
+// EVENT STAFF (RBAC)
+// ============================================
+model EventStaff {
+  id                String       @id @default(cuid())
+  eventId           String       @map("event_id")
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId            String       @map("user_id")
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role              StaffRole    @default(MODERATOR)
+  addedAt           DateTime     @default(now()) @map("added_at")
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@map("event_staff")
+}
+
+// ============================================
+// ACTIVITY LOG
+// ============================================
+model ActivityLog {
+  id                String       @id @default(cuid())
+  eventId           String       @map("event_id")
+  event             Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId            String?      @map("user_id")
+  user              User?        @relation(fields: [userId], references: [id])
+
+  action            String
+  details           String?
+  metadata          Json?
+
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  @@index([eventId])
+  @@index([userId])
+  @@map("activity_logs")
 }
