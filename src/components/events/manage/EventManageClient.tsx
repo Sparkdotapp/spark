@@ -56,6 +56,8 @@ export interface ManagedEvent {
     endDate: string | null;
     submissionDeadline: string | null;
     criteria: unknown;
+    requiresSubmission: boolean;
+    taskDescription: string | null;
   }[];
   teams: {
     id: string;

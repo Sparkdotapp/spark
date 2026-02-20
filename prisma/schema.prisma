@@ -37,11 +37,9 @@ enum RoundStatus {
 }
 
 enum ParticipationStatus {
-  REGISTERED
-  SUBMITTED
-  EVALUATED
-  PROMOTED
-  ELIMINATED
+  IN_PROGRESS
+  SHORTLISTED
+  REJECTED
 }
 
 enum StaffRole {
@@ -75,10 +73,42 @@ model User {
   profileImageUrl   String?   @map("profile_image_url")
   bio               String?
 
+  // Name
+  firstName         String?   @map("first_name")
+  lastName          String?   @map("last_name")
+
+  // Personal details
+  gender            String?
+  pronouns          String?
+  dateOfBirth       DateTime? @map("date_of_birth")
+  phone             String?
+  location          String?
+  permanentAddress  String?   @map("permanent_address")
+  hobbies           String[]  @default([])
+
+  // Academic / professional profile
+  userType          String?   @map("user_type")
+  domain            String?
+  college           String?
+  course            String?
+  specialization    String?
+  degree            String?
+  courseStartYear   Int?      @map("course_start_year")
+  graduationYear    Int?      @map("graduation_year")
+  courseType        String?   @map("course_type")
+  isGraduated       Boolean   @default(false) @map("is_graduated")
+  company           String?
+  designation       String?
+
+  // Skills
+  skills            String[]  @default([])
+
   // Social links
   githubUrl         String?   @map("github_url")
   linkedinUrl       String?   @map("linkedin_url")
   twitterUrl        String?   @map("twitter_url")
+  instagramUrl      String?   @map("instagram_url")
+  facebookUrl       String?   @map("facebook_url")
   websiteUrl        String?   @map("website_url")
 
   // Timestamps
@@ -127,6 +157,8 @@ model Event {
   maxParticipants   Int?         @map("max_participants")
   isPublic          Boolean      @default(true) @map("is_public")
   requireApproval   Boolean      @default(false) @map("require_approval")
+  requireGithub     Boolean      @default(false) @map("require_github")
+  requireLinkedin   Boolean      @default(false) @map("require_linkedin")
 
   // Tags / Skills
   tags              String[]     @default([])
@@ -166,6 +198,8 @@ model Round {
   description       String?
   roundNumber       Int          @map("round_number")
   status            RoundStatus  @default(UPCOMING)
+  requiresSubmission Boolean     @default(false) @map("requires_submission")
+  taskDescription   String?      @map("task_description")
 
   startDate         DateTime?    @map("start_date")
   endDate           DateTime?    @map("end_date")
@@ -240,7 +274,7 @@ model RoundParticipation {
   teamId            String              @map("team_id")
   team              Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  status            ParticipationStatus @default(REGISTERED)
+  status            ParticipationStatus @default(IN_PROGRESS)
   submissionUrl     String?             @map("submission_url")
   submissionNotes   String?             @map("submission_notes")
   submittedAt       DateTime?           @map("submitted_at")

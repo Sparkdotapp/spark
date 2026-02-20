@@ -81,6 +81,8 @@ export async function createEvent(data: {
   maxParticipants?: number;
   isPublic: boolean;
   requireApproval: boolean;
+  requireGithub?: boolean;
+  requireLinkedin?: boolean;
   tags: string[];
   skills: string[];
   coverImage?: string;
@@ -106,6 +108,8 @@ export async function createEvent(data: {
         maxParticipants: data.maxParticipants,
         isPublic: data.isPublic,
         requireApproval: data.requireApproval,
+        requireGithub: data.requireGithub ?? false,
+        requireLinkedin: data.requireLinkedin ?? false,
         tags: data.tags,
         skills: data.skills,
         coverImage: data.coverImage,
@@ -279,6 +283,8 @@ export async function createRound(
     endDate?: string;
     submissionDeadline?: string;
     criteria?: { name: string; maxScore: number; weight: number }[];
+    requiresSubmission?: boolean;
+    taskDescription?: string;
   }
 ) {
   try {
@@ -303,6 +309,8 @@ export async function createRound(
           ? new Date(data.submissionDeadline)
           : null,
         criteria: data.criteria ?? undefined,
+        requiresSubmission: data.requiresSubmission ?? false,
+        taskDescription: data.taskDescription || null,
       },
     });
 
@@ -332,6 +340,8 @@ export async function updateRound(
     endDate?: string;
     submissionDeadline?: string;
     criteria?: { name: string; maxScore: number; weight: number }[];
+    requiresSubmission?: boolean;
+    taskDescription?: string;
   }
 ) {
   try {
@@ -351,6 +361,8 @@ export async function updateRound(
     if (data.endDate) updateData.endDate = new Date(data.endDate);
     if (data.submissionDeadline) updateData.submissionDeadline = new Date(data.submissionDeadline);
     if (data.criteria !== undefined) updateData.criteria = data.criteria;
+    if (data.requiresSubmission !== undefined) updateData.requiresSubmission = data.requiresSubmission;
+    if (data.taskDescription !== undefined) updateData.taskDescription = data.taskDescription;
 
     const updated = await prisma.round.update({
       where: { id: roundId },
@@ -454,7 +466,7 @@ export async function registerTeam(
         data: {
           roundId: firstRound.id,
           teamId: team.id,
-          status: 'REGISTERED',
+          status: 'IN_PROGRESS',
         },
       });
     }
@@ -553,7 +565,7 @@ export async function submitEvaluation(
 
     await prisma.roundParticipation.update({
       where: { id: participationId },
-      data: { totalScore: avgScore, status: 'EVALUATED' },
+      data: { totalScore: avgScore },
     });
 
     return { success: true, evaluation };
@@ -578,24 +590,22 @@ export async function promoteTeams(roundId: string, teamIds: string[]) {
     // Update current round participations
     await prisma.roundParticipation.updateMany({
       where: { roundId, teamId: { in: teamIds } },
-      data: { status: 'PROMOTED' },
+      data: { status: 'SHORTLISTED' },
     });
 
-    // Eliminate the rest
+    // Reject the rest
     await prisma.roundParticipation.updateMany({
-      where: { roundId, teamId: { notIn: teamIds } },
-      data: { status: 'ELIMINATED' },
+      where: { roundId, teamId: { notIn: teamIds }, status: 'IN_PROGRESS' },
+      data: { status: 'REJECTED' },
     });
 
-    // Register promoted teams in next round if it exists
+    // Register shortlisted teams in next round if it exists
     if (nextRound) {
       for (const teamId of teamIds) {
-        await prisma.roundParticipation.create({
-          data: {
-            roundId: nextRound.id,
-            teamId,
-            status: 'REGISTERED',
-          },
+        await prisma.roundParticipation.upsert({
+          where: { roundId_teamId: { roundId: nextRound.id, teamId } },
+          create: { roundId: nextRound.id, teamId, status: 'IN_PROGRESS' },
+          update: { status: 'IN_PROGRESS' },
         });
       }
     }
@@ -605,13 +615,246 @@ export async function promoteTeams(roundId: string, teamIds: string[]) {
         eventId: round.eventId,
         userId: user.id,
         action: 'TEAMS_PROMOTED',
-        details: `${teamIds.length} teams promoted from Round ${round.roundNumber}`,
+        details: `${teamIds.length} teams shortlisted from Round ${round.roundNumber}`,
       },
     });
 
     return { success: true };
   } catch (error) {
     console.error('Failed to promote teams:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+// ============================================
+// ROUND MANAGEMENT - SHORTLIST / REJECT / ROLLBACK
+// ============================================
+export async function shortlistTeam(roundId: string, teamId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const round = await prisma.round.findUnique({ where: { id: roundId } });
+    if (!round) throw new Error('Round not found');
+    await assertEventAccess(round.eventId, user.id, ['ADMIN']);
+
+    // Update status to SHORTLISTED
+    await prisma.roundParticipation.update({
+      where: { roundId_teamId: { roundId, teamId } },
+      data: { status: 'SHORTLISTED' },
+    });
+
+    // Auto-register in next round
+    const nextRound = await prisma.round.findFirst({
+      where: { eventId: round.eventId, roundNumber: round.roundNumber + 1 },
+    });
+    if (nextRound) {
+      await prisma.roundParticipation.upsert({
+        where: { roundId_teamId: { roundId: nextRound.id, teamId } },
+        create: { roundId: nextRound.id, teamId, status: 'IN_PROGRESS' },
+        update: { status: 'IN_PROGRESS' },
+      });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to shortlist team:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function rejectTeam(roundId: string, teamId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const round = await prisma.round.findUnique({ where: { id: roundId } });
+    if (!round) throw new Error('Round not found');
+    await assertEventAccess(round.eventId, user.id, ['ADMIN']);
+
+    await prisma.roundParticipation.update({
+      where: { roundId_teamId: { roundId, teamId } },
+      data: { status: 'REJECTED' },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to reject team:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function rollbackTeam(roundId: string, teamId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const round = await prisma.round.findUnique({ where: { id: roundId } });
+    if (!round) throw new Error('Round not found');
+    await assertEventAccess(round.eventId, user.id, ['ADMIN']);
+
+    const participation = await prisma.roundParticipation.findUnique({
+      where: { roundId_teamId: { roundId, teamId } },
+    });
+    if (!participation) throw new Error('Participation not found');
+
+    if (participation.status === 'SHORTLISTED' || participation.status === 'REJECTED') {
+      // Rollback to IN_PROGRESS in same round
+      await prisma.roundParticipation.update({
+        where: { roundId_teamId: { roundId, teamId } },
+        data: { status: 'IN_PROGRESS' },
+      });
+
+      // If was shortlisted, also remove from next round
+      if (participation.status === 'SHORTLISTED') {
+        const nextRound = await prisma.round.findFirst({
+          where: { eventId: round.eventId, roundNumber: round.roundNumber + 1 },
+        });
+        if (nextRound) {
+          await prisma.roundParticipation.deleteMany({
+            where: { roundId: nextRound.id, teamId },
+          });
+        }
+      }
+    } else if (participation.status === 'IN_PROGRESS') {
+      // Rollback to previous round's IN_PROGRESS
+      if (round.roundNumber <= 1) throw new Error('Cannot rollback from first round');
+      const prevRound = await prisma.round.findFirst({
+        where: { eventId: round.eventId, roundNumber: round.roundNumber - 1 },
+      });
+      if (!prevRound) throw new Error('Previous round not found');
+
+      // Delete from current round
+      await prisma.roundParticipation.delete({
+        where: { roundId_teamId: { roundId, teamId } },
+      });
+
+      // Set back to IN_PROGRESS in prev round
+      await prisma.roundParticipation.update({
+        where: { roundId_teamId: { roundId: prevRound.id, teamId } },
+        data: { status: 'IN_PROGRESS' },
+      });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to rollback team:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function declareResult(roundId: string, resultType: 'shortlisted' | 'rejected') {
+  try {
+    const user = await getAuthenticatedUser();
+    const round = await prisma.round.findUnique({ where: { id: roundId } });
+    if (!round) throw new Error('Round not found');
+    await assertEventAccess(round.eventId, user.id, ['ADMIN']);
+
+    const status = resultType === 'shortlisted' ? 'SHORTLISTED' : 'REJECTED';
+    const count = await prisma.roundParticipation.count({
+      where: { roundId, status },
+    });
+
+    // Mark round as completed if declaring results
+    await prisma.round.update({
+      where: { id: roundId },
+      data: { status: 'COMPLETED' },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        eventId: round.eventId,
+        userId: user.id,
+        action: 'RESULT_DECLARED',
+        details: `Round ${round.roundNumber} "${round.title}" — ${resultType} results declared (${count} teams)`,
+      },
+    });
+
+    return { success: true, count };
+  } catch (error) {
+    console.error('Failed to declare result:', error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export async function getRoundParticipants(roundId: string) {
+  try {
+    const user = await getAuthenticatedUser();
+    const round = await prisma.round.findUnique({ where: { id: roundId } });
+    if (!round) throw new Error('Round not found');
+    await assertEventAccess(round.eventId, user.id);
+
+    const participations = await prisma.roundParticipation.findMany({
+      where: { roundId },
+      include: {
+        team: {
+          include: {
+            members: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    displayName: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                    profileImageUrl: true,
+                    dateOfBirth: true,
+                    phone: true,
+                    college: true,
+                    course: true,
+                    specialization: true,
+                    degree: true,
+                    courseStartYear: true,
+                    graduationYear: true,
+                    courseType: true,
+                    isGraduated: true,
+                    company: true,
+                    designation: true,
+                    location: true,
+                    userType: true,
+                    githubUrl: true,
+                    linkedinUrl: true,
+                    bio: true,
+                  },
+                },
+              },
+              orderBy: { isLeader: 'desc' },
+            },
+          },
+        },
+        evaluations: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return { success: true, participations };
+  } catch (error) {
+    console.error('Failed to get round participants:', error);
+    return { success: false, participations: [], error: (error as Error).message };
+  }
+}
+
+export async function submitRoundEntry(
+  roundId: string,
+  teamId: string,
+  data: { submissionUrl?: string; submissionNotes?: string }
+) {
+  try {
+    const user = await getAuthenticatedUser();
+
+    // Verify user is in this team
+    const member = await prisma.teamMember.findFirst({
+      where: { teamId, userId: user.id },
+    });
+    if (!member) throw new Error('You are not a member of this team');
+
+    await prisma.roundParticipation.update({
+      where: { roundId_teamId: { roundId, teamId } },
+      data: {
+        submissionUrl: data.submissionUrl || null,
+        submissionNotes: data.submissionNotes || null,
+        submittedAt: new Date(),
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to submit round entry:', error);
     return { success: false, error: (error as Error).message };
   }
 }

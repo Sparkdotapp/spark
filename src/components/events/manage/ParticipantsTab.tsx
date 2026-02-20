@@ -9,11 +9,9 @@ import { getEventParticipants, promoteTeams } from '@/app/actions/event-actions'
 import type { ManagedEvent } from './EventManageClient';
 
 const participationColors: Record<string, string> = {
-  REGISTERED: 'bg-[rgba(59,130,246,0.1)] text-[#3B82F6] border-[rgba(59,130,246,0.2)]',
-  SHORTLISTED: 'bg-[rgba(218,255,1,0.1)] text-[#DAFF01] border-[rgba(218,255,1,0.2)]',
-  PROMOTED: 'bg-[rgba(34,197,94,0.1)] text-[#22C55E] border-[rgba(34,197,94,0.2)]',
-  ELIMINATED: 'bg-[rgba(239,68,68,0.1)] text-[#EF4444] border-[rgba(239,68,68,0.2)]',
-  WINNER: 'bg-[rgba(255,215,0,0.1)] text-[#FFD700] border-[rgba(255,215,0,0.2)]',
+  IN_PROGRESS: 'bg-[rgba(59,130,246,0.1)] text-[#3B82F6] border-[rgba(59,130,246,0.2)]',
+  SHORTLISTED: 'bg-[rgba(34,197,94,0.1)] text-[#22C55E] border-[rgba(34,197,94,0.2)]',
+  REJECTED: 'bg-[rgba(239,68,68,0.1)] text-[#EF4444] border-[rgba(239,68,68,0.2)]',
 };
 
 export function ParticipantsTab({ event }: { event: ManagedEvent }) {

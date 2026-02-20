@@ -1,8 +1,8 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Menu, X } from 'lucide-react';
-import { useUser, UserButton } from '@stackframe/stack';
+import { Zap, Menu, X, User, LogOut, ChevronDown, Settings } from 'lucide-react';
+import { useUser } from '@stackframe/stack';
 import Link from 'next/link';
 
 interface NavLink {
@@ -23,6 +23,8 @@ export const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setHasMounted(true);
@@ -30,6 +32,16 @@ export const Navbar = () => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    if (dropdownOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [dropdownOpen]);
 
   // Prevent hydration mismatch: only apply scrolled class after mount
   const headerClass = hasMounted && scrolled
@@ -69,7 +81,64 @@ export const Navbar = () => {
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
             {user ? (
-              <UserButton showUserInfo={false} />
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setDropdownOpen((o) => !o)}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+                >
+                  {user.profileImageUrl ? (
+                    <img src={user.profileImageUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-[rgba(218,255,1,0.12)] flex items-center justify-center text-sm font-bold text-[#DAFF01]">
+                      {(user.displayName || user.primaryEmail || 'U')[0].toUpperCase()}
+                    </div>
+                  )}
+                  <ChevronDown className={`w-3.5 h-3.5 text-[rgb(130,130,140)] transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                <AnimatePresence>
+                  {dropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-[calc(100%+8px)] w-52 rounded-2xl bg-[rgb(26,28,30)] border border-[rgba(255,255,255,0.08)] shadow-2xl shadow-black/50 overflow-hidden z-50"
+                    >
+                      <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.06)]">
+                        <p className="text-xs font-semibold text-white truncate">{user.displayName || 'User'}</p>
+                        <p className="text-[11px] text-[rgb(100,100,110)] truncate">{user.primaryEmail}</p>
+                      </div>
+                      <div className="py-1.5">
+                        <Link
+                          href="/profile"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+                        >
+                          <User className="w-4 h-4 text-[#DAFF01]" />
+                          Profile
+                        </Link>
+                        <Link
+                          href="/handler/account-settings"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+                        >
+                          <Settings className="w-4 h-4 text-[rgb(130,130,140)]" />
+                          Account Settings
+                        </Link>
+                        <div className="h-px mx-4 my-1 bg-[rgba(255,255,255,0.06)]" />
+                        <button
+                          onClick={() => { setDropdownOpen(false); user.signOut(); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[rgb(248,113,113)] hover:bg-[rgba(248,113,113,0.06)] transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Sign Out
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             ) : (
               <>
                 <a
@@ -136,9 +205,29 @@ export const Navbar = () => {
                     >
                       My Events
                     </Link>
-                    <div className="flex justify-center mt-2">
-                      <UserButton showUserInfo={true} />
-                    </div>
+                    <Link
+                      href="/profile"
+                      onClick={() => setMobileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 text-base font-medium rounded-xl border border-[rgba(255,255,255,0.1)] text-white transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+                    >
+                      <User className="w-5 h-5 text-[#DAFF01]" />
+                      Profile
+                    </Link>
+                    <Link
+                      href="/handler/account-settings"
+                      onClick={() => setMobileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 text-base font-medium rounded-xl border border-[rgba(255,255,255,0.1)] text-white transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+                    >
+                      <Settings className="w-5 h-5 text-[rgb(130,130,140)]" />
+                      Account Settings
+                    </Link>
+                    <button
+                      onClick={() => { setMobileOpen(false); user.signOut(); }}
+                      className="flex items-center justify-center gap-2 w-full py-3 text-base font-medium rounded-xl border border-[rgba(248,113,113,0.3)] text-[rgb(248,113,113)] transition-colors hover:bg-[rgba(248,113,113,0.06)]"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      Sign Out
+                    </button>
                   </>
                 ) : (
                   <>

@@ -86,16 +86,45 @@ export async function updateUserProfile(
     stackAuthId: string,
     data: {
         displayName?: string;
+        firstName?: string;
+        lastName?: string;
         bio?: string;
+        gender?: string;
+        pronouns?: string;
+        phone?: string;
+        location?: string;
+        permanentAddress?: string;
+        hobbies?: string[];
+        userType?: string;
+        domain?: string;
+        college?: string;
+        course?: string;
+        specialization?: string;
+        degree?: string;
+        courseStartYear?: number | null;
+        graduationYear?: number | null;
+        courseType?: string;
+        isGraduated?: boolean;
+        company?: string;
+        designation?: string;
+        skills?: string[];
         githubUrl?: string;
         linkedinUrl?: string;
         twitterUrl?: string;
+        instagramUrl?: string;
+        facebookUrl?: string;
         websiteUrl?: string;
+        dateOfBirth?: string | null;
     }
 ): Promise<User> {
+    const { dateOfBirth, ...rest } = data;
+    const updateData: Record<string, unknown> = { ...rest };
+    if (dateOfBirth !== undefined) {
+        updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    }
     return prisma.user.update({
         where: { stackAuthId },
-        data,
+        data: updateData,
     });
 }
 

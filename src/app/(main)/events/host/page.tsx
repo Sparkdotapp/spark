@@ -66,6 +66,8 @@ export default function HostEventPage() {
     maxParticipants: undefined as number | undefined,
     isPublic: true,
     requireApproval: false,
+    requireGithub: false,
+    requireLinkedin: false,
     tags: [] as string[],
     skills: [] as string[],
     coverImage: '',
@@ -113,6 +115,8 @@ export default function HostEventPage() {
         maxParticipants: form.maxParticipants,
         isPublic: form.isPublic,
         requireApproval: form.requireApproval,
+        requireGithub: form.requireGithub,
+        requireLinkedin: form.requireLinkedin,
         tags: form.tags,
         skills: form.skills,
         coverImage: form.coverImage || undefined,
@@ -414,6 +418,33 @@ export default function HostEventPage() {
                 >
                   <Lock className="w-4 h-4" /> Private
                 </button>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-[rgb(200,200,210)]">Profile Requirements</label>
+                <p className="text-xs text-[rgb(130,130,140)]">Should participants be required to provide these on their profile?</p>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => update('requireGithub', !form.requireGithub)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      form.requireGithub
+                        ? 'border-[rgba(218,255,1,0.4)] bg-[rgba(218,255,1,0.08)] text-[#DAFF01]'
+                        : 'border-[rgba(255,255,255,0.08)] bg-[rgb(26,28,30)] text-[rgb(161,161,170)]'
+                    }`}
+                  >
+                    GitHub {form.requireGithub ? '(Required)' : '(Optional)'}
+                  </button>
+                  <button
+                    onClick={() => update('requireLinkedin', !form.requireLinkedin)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      form.requireLinkedin
+                        ? 'border-[rgba(218,255,1,0.4)] bg-[rgba(218,255,1,0.08)] text-[#DAFF01]'
+                        : 'border-[rgba(255,255,255,0.08)] bg-[rgb(26,28,30)] text-[rgb(161,161,170)]'
+                    }`}
+                  >
+                    LinkedIn {form.requireLinkedin ? '(Required)' : '(Optional)'}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">

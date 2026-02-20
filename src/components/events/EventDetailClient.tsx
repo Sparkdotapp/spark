@@ -26,6 +26,9 @@ import {
   Send,
   Mail,
   Shield,
+  Phone,
+  GraduationCap,
+  Building2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -46,6 +49,7 @@ import {
   cancelTeamInvite,
   submitTeam,
 } from '@/app/actions/event-actions';
+import { getCurrentDbUser, updateCurrentUserProfile } from '@/app/actions/user-actions';
 
 interface EventDetailProps {
   event: {
@@ -142,6 +146,26 @@ export function EventDetailClient({ event }: EventDetailProps) {
   const [submittingTeam, setSubmittingTeam] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
+  // Profile step for registration
+  const [dbUser, setDbUser] = useState<any>(null);
+  const [regStep, setRegStep] = useState<'profile' | 'team'>('team');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    gender: '',
+    userType: '',
+    location: '',
+    college: '',
+    course: '',
+    degree: '',
+    graduationYear: '',
+    isGraduated: false,
+    company: '',
+    designation: '',
+  });
+
   const isHost = user?.id === event.host.id;
   const isStaff = event.staff.some((s) => s.user.id === user?.id);
   const isOrganizer = isHost || isStaff;
@@ -189,6 +213,67 @@ export function EventDetailClient({ event }: EventDetailProps) {
   useEffect(() => { fetchMyTeam(); }, [fetchMyTeam]);
   useEffect(() => { fetchInvites(); }, [fetchInvites]);
   useEffect(() => { fetchPendingInvites(); }, [fetchPendingInvites]);
+
+  // Load DB user for profile completeness check
+  useEffect(() => {
+    if (!user) return;
+    getCurrentDbUser().then((u) => {
+      if (!u) return;
+      setDbUser(u);
+      setProfileForm({
+        firstName: u.firstName || '',
+        lastName: u.lastName || '',
+        phone: u.phone || '',
+        gender: u.gender || '',
+        userType: u.userType || '',
+        location: u.location || '',
+        college: u.college || '',
+        course: u.course || '',
+        degree: u.degree || '',
+        graduationYear: u.graduationYear ? String(u.graduationYear) : '',
+        isGraduated: u.isGraduated || false,
+        company: u.company || '',
+        designation: u.designation || '',
+      });
+    });
+  }, [user]);
+
+  function handleOpenRegister() {
+    const isProfileComplete = dbUser?.firstName && dbUser?.gender && dbUser?.userType && dbUser?.location && dbUser?.phone && (dbUser?.college || dbUser?.company);
+    setRegStep(isProfileComplete ? 'team' : 'profile');
+    setShowRegister(true);
+    setRegError('');
+  }
+
+  async function handleSaveProfile() {
+    setSavingProfile(true);
+    try {
+      const result = await updateCurrentUserProfile({
+        firstName: profileForm.firstName || undefined,
+        lastName: profileForm.lastName || undefined,
+        displayName: profileForm.firstName ? `${profileForm.firstName}${profileForm.lastName ? ` ${profileForm.lastName}` : ''}` : undefined,
+        phone: profileForm.phone || undefined,
+        gender: profileForm.gender || undefined,
+        userType: profileForm.userType || undefined,
+        location: profileForm.location || undefined,
+        college: profileForm.college || undefined,
+        course: profileForm.course || undefined,
+        degree: profileForm.degree || undefined,
+        graduationYear: profileForm.graduationYear ? parseInt(profileForm.graduationYear) : undefined,
+        isGraduated: profileForm.isGraduated,
+        company: profileForm.company || undefined,
+        designation: profileForm.designation || undefined,
+      });
+      if (result.success) {
+        setDbUser(result.user);
+        setRegStep('team');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   async function handleCreateTeam() {
     if (!teamName.trim()) return;
@@ -421,7 +506,7 @@ export function EventDetailClient({ event }: EventDetailProps) {
                 </Link>
               )}
               {!isHost && !myTeam && !loadingTeam && event.status !== 'DRAFT' && event.status !== 'CANCELLED' && (
-                <button onClick={() => setShowRegister(true)} className="px-6 py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] hover:bg-[rgb(166,190,21)] hover:shadow-[0_8px_25px_rgba(218,255,1,0.3)] transition-all">
+                <button onClick={handleOpenRegister} className="px-6 py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] hover:bg-[rgb(166,190,21)] hover:shadow-[0_8px_25px_rgba(218,255,1,0.3)] transition-all">
                   Register Now
                 </button>
               )}
@@ -440,45 +525,186 @@ export function EventDetailClient({ event }: EventDetailProps) {
       {/* Registration Modal */}
       {showRegister && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.6)] backdrop-blur-sm">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg mx-4 p-6 rounded-2xl bg-[rgb(26,28,30)] border border-[rgba(255,255,255,0.08)]">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg mx-4 p-6 rounded-2xl bg-[rgb(26,28,30)] border border-[rgba(255,255,255,0.08)] max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-white">Register for {event.title}</h3>
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  {regStep === 'profile' ? 'Complete Your Profile' : `Register for ${event.title}`}
+                </h3>
+                {regStep === 'profile' && (
+                  <p className="text-xs text-[rgb(130,130,140)] mt-1">Hosts need this info to review participants</p>
+                )}
+              </div>
               <button onClick={() => { setShowRegister(false); setRegError(''); }} className="p-1 rounded-lg text-[rgb(161,161,170)] hover:text-white transition-colors"><X className="w-5 h-5" /></button>
             </div>
-            <div className="flex gap-1 p-1 mb-6 rounded-xl bg-[rgb(17,17,19)]">
-              <button onClick={() => { setRegisterTab('create'); setRegError(''); }} className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${registerTab === 'create' ? 'bg-[rgba(218,255,1,0.1)] text-[#DAFF01]' : 'text-[rgb(161,161,170)] hover:text-white'}`}>Create Team</button>
-              <button onClick={() => { setRegisterTab('join'); setRegError(''); }} className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${registerTab === 'join' ? 'bg-[rgba(218,255,1,0.1)] text-[#DAFF01]' : 'text-[rgb(161,161,170)] hover:text-white'}`}>Join Team</button>
-            </div>
-            {registerTab === 'create' && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm text-[rgb(200,200,210)]">Team Name</label>
-                  <Input placeholder="Enter a unique team name" value={teamName} onChange={(e) => setTeamName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateTeam()} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+
+            {/* Step indicator */}
+            <div className="flex items-center gap-2 mb-6">
+              <div className={`flex items-center gap-1.5 text-xs font-medium ${regStep === 'profile' ? 'text-[#DAFF01]' : 'text-[#22C55E]'}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${regStep === 'profile' ? 'bg-[rgba(218,255,1,0.15)] border border-[rgba(218,255,1,0.3)]' : 'bg-[rgba(34,197,94,0.15)] border border-[rgba(34,197,94,0.3)]'}`}>
+                  {regStep === 'profile' ? '1' : <Check className="w-3 h-3" />}
                 </div>
-                <p className="text-xs text-[rgb(130,130,140)]">You&apos;ll be the team leader. Team size: {event.minTeamSize}&ndash;{event.maxTeamSize} members. You can invite members after creating.</p>
-                {regError && <p className="text-sm text-red-400">{regError}</p>}
-                <button onClick={handleCreateTeam} disabled={registering || !teamName.trim()} className="w-full py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] hover:bg-[rgb(166,190,21)] disabled:opacity-40 transition-all">
-                  {registering ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Create Team'}
+                Profile
+              </div>
+              <div className="flex-1 h-px bg-[rgba(255,255,255,0.08)]" />
+              <div className={`flex items-center gap-1.5 text-xs font-medium ${regStep === 'team' ? 'text-[#DAFF01]' : 'text-[rgb(130,130,140)]'}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border ${regStep === 'team' ? 'bg-[rgba(218,255,1,0.15)] border-[rgba(218,255,1,0.3)] text-[#DAFF01]' : 'border-[rgba(255,255,255,0.12)] text-[rgb(100,100,110)]'}`}>2</div>
+                Team
+              </div>
+            </div>
+
+            {/* Step 1: Profile */}
+            {regStep === 'profile' && (
+              <div className="space-y-4">
+                {/* Name row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-[rgb(200,200,210)]">First Name <span className="text-red-400">*</span></label>
+                    <Input placeholder="First name" value={profileForm.firstName} onChange={(e) => setProfileForm((f) => ({ ...f, firstName: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-[rgb(200,200,210)]">Last Name</label>
+                    <Input placeholder="Last name" value={profileForm.lastName} onChange={(e) => setProfileForm((f) => ({ ...f, lastName: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                  </div>
+                </div>
+                {/* Gender */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-[rgb(200,200,210)]">Gender <span className="text-red-400">*</span></label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Male', 'Female', 'Non-binary', 'Prefer not to say'].map((g) => (
+                      <button key={g} onClick={() => setProfileForm((f) => ({ ...f, gender: g }))} className={`px-3 py-1.5 text-xs rounded-full border transition-all ${profileForm.gender === g ? 'border-[rgba(218,255,1,0.4)] bg-[rgba(218,255,1,0.08)] text-[#DAFF01]' : 'border-[rgba(255,255,255,0.1)] text-[rgb(161,161,170)] hover:border-[rgba(255,255,255,0.22)] hover:text-white'}`}>{g}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* User type */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-[rgb(200,200,210)]">I am a <span className="text-red-400">*</span></label>
+                  <div className="flex flex-wrap gap-2">
+                    {['College Student', 'School Student', 'Professional', 'Fresher'].map((t) => (
+                      <button key={t} onClick={() => setProfileForm((f) => ({ ...f, userType: t, isGraduated: t === 'Professional' }))} className={`px-3 py-1.5 text-xs rounded-full border transition-all ${profileForm.userType === t ? 'border-[rgba(218,255,1,0.4)] bg-[rgba(218,255,1,0.08)] text-[#DAFF01]' : 'border-[rgba(255,255,255,0.1)] text-[rgb(161,161,170)] hover:border-[rgba(255,255,255,0.22)] hover:text-white'}`}>{t}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* Location */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-[rgb(200,200,210)]">Location <span className="text-red-400">*</span></label>
+                  <Input placeholder="e.g. Mumbai, Maharashtra" value={profileForm.location} onChange={(e) => setProfileForm((f) => ({ ...f, location: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                </div>
+                {/* Phone + Status */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-[rgb(200,200,210)]">Phone <span className="text-red-400">*</span></label>
+                    <Input placeholder="+91 9876543210" value={profileForm.phone} onChange={(e) => setProfileForm((f) => ({ ...f, phone: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-[rgb(200,200,210)]">Status</label>
+                    <div className="flex gap-2">
+                      <button onClick={() => setProfileForm((f) => ({ ...f, isGraduated: false }))} className={`flex-1 py-2 text-xs rounded-lg border transition-all ${!profileForm.isGraduated ? 'border-[rgba(218,255,1,0.3)] bg-[rgba(218,255,1,0.06)] text-[#DAFF01]' : 'border-[rgba(255,255,255,0.08)] text-[rgb(130,130,140)]'}`}>Student</button>
+                      <button onClick={() => setProfileForm((f) => ({ ...f, isGraduated: true }))} className={`flex-1 py-2 text-xs rounded-lg border transition-all ${profileForm.isGraduated ? 'border-[rgba(218,255,1,0.3)] bg-[rgba(218,255,1,0.06)] text-[#DAFF01]' : 'border-[rgba(255,255,255,0.08)] text-[rgb(130,130,140)]'}`}>Graduated</button>
+                    </div>
+                  </div>
+                </div>
+
+                {!profileForm.isGraduated ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-[rgb(200,200,210)]">College / University <span className="text-red-400">*</span></label>
+                      <Input placeholder="e.g. IIT Delhi" value={profileForm.college} onChange={(e) => setProfileForm((f) => ({ ...f, college: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-[rgb(200,200,210)]">Degree</label>
+                        <select value={profileForm.degree} onChange={(e) => setProfileForm((f) => ({ ...f, degree: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg bg-[rgb(17,17,19)] border border-[rgba(255,255,255,0.08)] text-white outline-none">
+                          <option value="">Select</option>
+                          <option>B.Tech / B.E.</option>
+                          <option>BCA</option>
+                          <option>B.Sc</option>
+                          <option>MBA</option>
+                          <option>MCA</option>
+                          <option>M.Tech</option>
+                          <option>PhD</option>
+                          <option>Other</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-[rgb(200,200,210)]">Year</label>
+                        <select value={profileForm.graduationYear} onChange={(e) => setProfileForm((f) => ({ ...f, graduationYear: e.target.value }))} className="w-full px-3 py-2 text-sm rounded-lg bg-[rgb(17,17,19)] border border-[rgba(255,255,255,0.08)] text-white outline-none">
+                          <option value="">Select</option>
+                          {[2025, 2026, 2027, 2028, 2029, 2030].map((y) => <option key={y}>{y}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-[rgb(200,200,210)]">Branch / Course</label>
+                      <Input placeholder="e.g. Computer Science" value={profileForm.course} onChange={(e) => setProfileForm((f) => ({ ...f, course: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-[rgb(200,200,210)]">Company</label>
+                      <Input placeholder="e.g. Google" value={profileForm.company} onChange={(e) => setProfileForm((f) => ({ ...f, company: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-[rgb(200,200,210)]">Designation</label>
+                      <Input placeholder="e.g. Software Engineer" value={profileForm.designation} onChange={(e) => setProfileForm((f) => ({ ...f, designation: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-[rgb(200,200,210)]">Graduation Year</label>
+                      <Input placeholder="e.g. 2023" value={profileForm.graduationYear} onChange={(e) => setProfileForm((f) => ({ ...f, graduationYear: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    </div>
+                  </>
+                )}
+
+                <button
+                  onClick={handleSaveProfile}
+                  disabled={savingProfile || !profileForm.firstName.trim() || !profileForm.gender || !profileForm.userType || !profileForm.location.trim() || !profileForm.phone.trim() || (!profileForm.isGraduated && !profileForm.college.trim())}
+                  className="w-full py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] hover:bg-[rgb(166,190,21)] disabled:opacity-40 transition-all"
+                >
+                  {savingProfile ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Save & Continue →'}
                 </button>
               </div>
             )}
-            {registerTab === 'join' && (
-              <div className="space-y-4">
-                <div className="text-center py-4">
-                  <div className="w-16 h-16 rounded-2xl bg-[rgba(218,255,1,0.08)] flex items-center justify-center mx-auto mb-4"><Users className="w-8 h-8 text-[#DAFF01]" /></div>
-                  <h4 className="text-base font-semibold text-white mb-2">Join with Invite Code</h4>
-                  <p className="text-xs text-[rgb(130,130,140)]">Ask your team leader for the 6-character invite code</p>
+
+            {/* Step 2: Team */}
+            {regStep === 'team' && (
+              <>
+                <div className="flex gap-1 p-1 mb-6 rounded-xl bg-[rgb(17,17,19)]">
+                  <button onClick={() => { setRegisterTab('create'); setRegError(''); }} className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${registerTab === 'create' ? 'bg-[rgba(218,255,1,0.1)] text-[#DAFF01]' : 'text-[rgb(161,161,170)] hover:text-white'}`}>Create Team</button>
+                  <button onClick={() => { setRegisterTab('join'); setRegError(''); }} className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${registerTab === 'join' ? 'bg-[rgba(218,255,1,0.1)] text-[#DAFF01]' : 'text-[rgb(161,161,170)] hover:text-white'}`}>Join Team</button>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm text-[rgb(200,200,210)]">Invite Code</label>
-                  <Input placeholder="Enter 6-character code" value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && handleJoinByCode()} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white text-center text-lg tracking-widest font-mono uppercase" maxLength={6} />
-                </div>
-                {regError && <p className="text-sm text-red-400">{regError}</p>}
-                <button onClick={handleJoinByCode} disabled={registering || inviteCode.trim().length !== 6} className="w-full py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] hover:bg-[rgb(166,190,21)] disabled:opacity-40 transition-all">
-                  {registering ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Join Team'}
-                </button>
-                <p className="text-[10px] text-center text-[rgb(130,130,140)]">Code remains valid until the team is submitted</p>
-              </div>
+                {registerTab === 'create' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm text-[rgb(200,200,210)]">Team Name</label>
+                      <Input placeholder="Enter a unique team name" value={teamName} onChange={(e) => setTeamName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateTeam()} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    </div>
+                    <p className="text-xs text-[rgb(130,130,140)]">You&apos;ll be the team leader. Team size: {event.minTeamSize}&ndash;{event.maxTeamSize} members. You can invite members after creating.</p>
+                    {regError && <p className="text-sm text-red-400">{regError}</p>}
+                    <button onClick={handleCreateTeam} disabled={registering || !teamName.trim()} className="w-full py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] hover:bg-[rgb(166,190,21)] disabled:opacity-40 transition-all">
+                      {registering ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Create Team'}
+                    </button>
+                  </div>
+                )}
+                {registerTab === 'join' && (
+                  <div className="space-y-4">
+                    <div className="text-center py-4">
+                      <div className="w-16 h-16 rounded-2xl bg-[rgba(218,255,1,0.08)] flex items-center justify-center mx-auto mb-4"><Users className="w-8 h-8 text-[#DAFF01]" /></div>
+                      <h4 className="text-base font-semibold text-white mb-2">Join with Invite Code</h4>
+                      <p className="text-xs text-[rgb(130,130,140)]">Ask your team leader for the 6-character invite code</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm text-[rgb(200,200,210)]">Invite Code</label>
+                      <Input placeholder="Enter 6-character code" value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && handleJoinByCode()} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white text-center text-lg tracking-widest font-mono uppercase" maxLength={6} />
+                    </div>
+                    {regError && <p className="text-sm text-red-400">{regError}</p>}
+                    <button onClick={handleJoinByCode} disabled={registering || inviteCode.trim().length !== 6} className="w-full py-2.5 text-sm font-semibold rounded-xl bg-[#DAFF01] text-[rgb(17,17,19)] hover:bg-[rgb(166,190,21)] disabled:opacity-40 transition-all">
+                      {registering ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Join Team'}
+                    </button>
+                    <p className="text-[10px] text-center text-[rgb(130,130,140)]">Code remains valid until the team is submitted</p>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
         </div>
