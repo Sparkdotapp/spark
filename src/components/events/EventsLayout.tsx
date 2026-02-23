@@ -255,28 +255,7 @@ export default function EventsLayout() {
     <div className="min-h-screen bg-[rgb(17,17,19)]">
       {/* Hero */}
       <section className="relative pt-28 pb-12 overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[radial-gradient(circle,rgba(218,255,1,0.04)_0%,transparent_70%)]" />
-        <div className="absolute top-20 right-10 w-[200px] h-[200px] bg-[radial-gradient(circle,rgba(0,212,255,0.03)_0%,transparent_70%)]" />
-
         <div className="max-w-[1200px] mx-auto px-6">
-          <motion.div
-            ref={headerRef}
-            initial={{ opacity: 0, y: 20 }}
-            animate={headerInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.5 }}
-            className="text-center mb-10"
-          >
-            <span className="inline-block text-sm font-semibold text-[#DAFF01] tracking-widest uppercase mb-4">
-              Discover & Compete
-            </span>
-            <h1 className="text-4xl md:text-6xl font-bold text-white tracking-tight mb-4">
-              Tech Events
-            </h1>
-            <p className="max-w-2xl mx-auto text-lg text-[rgb(161,161,170)]">
-              Join hackathons, conferences, workshops, and competitions. Host your own events and build something amazing.
-            </p>
-          </motion.div>
-
           {/* Search */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
