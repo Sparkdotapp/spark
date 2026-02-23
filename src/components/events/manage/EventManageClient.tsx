@@ -17,7 +17,6 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { OverviewTab } from './OverviewTab';
 import { RoundsTab } from './RoundsTab';
-import { ParticipantsTab } from './ParticipantsTab';
 import { PrizesSponsorsTab } from './PrizesSponsorsTab';
 import { StaffTab } from './StaffTab';
 import { AnalyticsTab } from './AnalyticsTab';
@@ -155,7 +154,6 @@ export function EventManageClient({ event }: { event: ManagedEvent }) {
         <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
           {activeTab === 'overview' && <OverviewTab event={event} />}
           {activeTab === 'rounds' && <RoundsTab event={event} />}
-          {activeTab === 'participants' && <ParticipantsTab event={event} />}
           {activeTab === 'prizes' && <PrizesSponsorsTab event={event} />}
           {activeTab === 'staff' && <StaffTab event={event} />}
           {activeTab === 'analytics' && <AnalyticsTab event={event} />}

@@ -361,26 +361,6 @@ export default function EventsLayout() {
                   )}
                 </div>
               </div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                viewport={{ once: true }}
-                className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4"
-              >
-                {[
-                  { value: events.length.toString(), label: 'Active Events' },
-                  { value: events.reduce((s, e) => s + e._count.teams, 0).toString(), label: 'Teams Registered' },
-                  { value: events.filter((e) => e.type === 'HACKATHON').length.toString(), label: 'Hackathons' },
-                  { value: events.filter((e) => e.isVirtual).length.toString(), label: 'Virtual Events' },
-                ].map((stat, i) => (
-                  <div key={i} className="p-5 rounded-xl bg-[rgb(26,28,30)] border border-[rgba(255,255,255,0.06)] text-center">
-                    <div className="text-2xl font-bold text-[#DAFF01]">{stat.value}</div>
-                    <div className="text-sm text-[rgb(161,161,170)] mt-1">{stat.label}</div>
-                  </div>
-                ))}
-              </motion.div>
             </>
           )}
         </div>
