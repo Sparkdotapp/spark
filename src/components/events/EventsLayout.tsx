@@ -254,7 +254,7 @@ export default function EventsLayout() {
   return (
     <div className="min-h-screen bg-[rgb(17,17,19)]">
       {/* Hero */}
-      <section className="relative pt-28 pb-12 overflow-hidden">
+      <section ref={headerRef} className="relative pt-36 pb-12 overflow-hidden">
         <div className="max-w-[1200px] mx-auto px-6">
           {/* Search */}
           <motion.div

@@ -37,7 +37,7 @@ export function EventsSidebar() {
   const isActive = (href: string) => pathname === href;
 
   return (
-    <aside className="hidden lg:block w-[240px] shrink-0 sticky top-[72px] h-[calc(100vh-72px)] overflow-y-auto border-r border-[rgba(255,255,255,0.06)] bg-[rgb(17,17,19)]">
+    <aside className="hidden lg:block w-[240px] shrink-0 fixed top-[72px] left-0 h-[calc(100vh-72px)] overflow-y-auto border-r border-[rgba(255,255,255,0.06)] bg-[rgb(17,17,19)] z-40">
       <div className="p-4 space-y-1">
         {/* Host an Event */}
         <Link
