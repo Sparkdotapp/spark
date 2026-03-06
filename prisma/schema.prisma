@@ -124,6 +124,10 @@ model User {
   activityLogs      ActivityLog[]
   receivedInvites   TeamInvite[]      @relation("ReceivedInvites")
   sentInvites       TeamInvite[]      @relation("SentInvites")
+  posts             Post[]            @relation("UserPosts")
+  comments          Comment[]         @relation("UserComments")
+  postLikes         PostLike[]
+  commentLikes      CommentLike[]
 
   @@map("users")
 }
@@ -417,4 +421,83 @@ model ActivityLog {
   @@index([eventId])
   @@index([userId])
   @@map("activity_logs")
+}
+
+// ============================================
+// POST
+// ============================================
+model Post {
+  id        String    @id @default(cuid())
+  content   String?
+  imageUrl  String?   @map("image_url")
+
+  authorId  String    @map("author_id")
+  author    User      @relation("UserPosts", fields: [authorId], references: [id], onDelete: Cascade)
+
+  comments  Comment[]
+  likes     PostLike[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([authorId])
+  @@index([createdAt])
+  @@map("posts")
+}
+
+// ============================================
+// COMMENT
+// ============================================
+model Comment {
+  id        String    @id @default(cuid())
+  content   String
+
+  postId    String    @map("post_id")
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  authorId  String    @map("author_id")
+  author    User      @relation("UserComments", fields: [authorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  likes     CommentLike[]
+
+  @@index([postId])
+  @@index([authorId])
+  @@map("comments")
+}
+
+// ============================================
+// POST LIKE
+// ============================================
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String   @map("post_id")
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+  @@map("post_likes")
+}
+
+// ============================================
+// COMMENT LIKE
+// ============================================
+model CommentLike {
+  id        String   @id @default(cuid())
+  commentId String   @map("comment_id")
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@index([userId])
+  @@map("comment_likes")
 }
