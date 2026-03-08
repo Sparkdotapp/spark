@@ -19,11 +19,20 @@ interface Author {
 
 interface PostData {
   id: string;
+  feedId?: string;
   content: string | null;
   imageUrl: string | null;
   author: Author;
-  _count: { comments: number; likes: number };
+  _count: { comments: number; likes: number; reposts: number };
   isLiked?: boolean;
+  isReposted?: boolean;
+  repostedBy?: {
+    id: string;
+    displayName: string | null;
+    profileImageUrl: string | null;
+    email: string;
+    repostId: string;
+  } | null;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -166,7 +175,7 @@ export default function SocialPage() {
             <div className="space-y-5">
               {posts.map((post, i) => (
                 <PostCard
-                  key={post.id}
+                  key={post.feedId || post.id}
                   post={post}
                   currentUserId={currentUser?.id || null}
                   onEdit={handleEdit}

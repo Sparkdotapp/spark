@@ -128,6 +128,7 @@ model User {
   comments          Comment[]         @relation("UserComments")
   postLikes         PostLike[]
   commentLikes      CommentLike[]
+  reposts           Repost[]
 
   @@map("users")
 }
@@ -436,6 +437,7 @@ model Post {
 
   comments  Comment[]
   likes     PostLike[]
+  reposts   Repost[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -500,4 +502,21 @@ model CommentLike {
   @@index([commentId])
   @@index([userId])
   @@map("comment_likes")
+}
+
+// ============================================
+// REPOST
+// ============================================
+model Repost {
+  id        String   @id @default(cuid())
+  postId    String   @map("post_id")
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+  @@map("reposts")
 }

@@ -54,7 +54,6 @@ export default function CommentItem({
     const isEdited =
         new Date(comment.updatedAt).getTime() - new Date(comment.createdAt).getTime() > 1000;
 
-    // Close menu on click outside
     useEffect(() => {
         function handleClick(e: MouseEvent) {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -65,7 +64,6 @@ export default function CommentItem({
         return () => document.removeEventListener('mousedown', handleClick);
     }, [showMenu]);
 
-    // Focus edit input
     useEffect(() => {
         if (isEditing && editInputRef.current) {
             editInputRef.current.focus();
@@ -79,7 +77,6 @@ export default function CommentItem({
         }
         if (likingInProgress) return;
 
-        // Optimistic update
         setLiked(!liked);
         setLikeCount((c) => (liked ? c - 1 : c + 1));
         setLikingInProgress(true);
@@ -156,28 +153,18 @@ export default function CommentItem({
                 <img
                     src={comment.author.profileImageUrl}
                     alt=""
-                    className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    className="w-8 h-8 rounded-full object-cover flex-shrink-0 mt-0.5"
                 />
             ) : (
-                <div className="w-8 h-8 rounded-full bg-[rgba(218,255,1,0.1)] flex items-center justify-center text-xs font-bold text-[#DAFF01] flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-[rgba(218,255,1,0.1)] flex items-center justify-center text-xs font-bold text-[#DAFF01] flex-shrink-0 mt-0.5">
                     {initials}
                 </div>
             )}
 
-            {/* Content */}
+            {/* Content bubble */}
             <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-sm font-medium text-white">
-                        {comment.author.displayName || comment.author.email}
-                    </span>
-                    <span className="text-[11px] text-[rgb(80,80,90)]">
-                        {timeAgo}
-                        {isEdited && ' • edited'}
-                    </span>
-                </div>
-
                 {isEditing ? (
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2">
                         <input
                             ref={editInputRef}
                             type="text"
@@ -214,14 +201,27 @@ export default function CommentItem({
                         </button>
                     </div>
                 ) : (
-                    <>
-                        <p className="text-sm text-[rgb(200,200,210)] leading-relaxed">{comment.content}</p>
-                        {/* Like button for comment */}
+                    <div className="flex items-start gap-2">
+                        {/* Comment content bubble */}
+                        <div className="flex-1 min-w-0 bg-[rgb(35,37,40)] rounded-xl px-3.5 py-2.5">
+                            <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-[13px] font-semibold text-white">
+                                    {comment.author.displayName || comment.author.email}
+                                </span>
+                                <span className="text-[10px] text-[rgb(80,80,90)]">
+                                    {timeAgo}
+                                    {isEdited && ' • edited'}
+                                </span>
+                            </div>
+                            <p className="text-[13px] text-[rgb(200,200,210)] leading-relaxed">{comment.content}</p>
+                        </div>
+
+                        {/* Like button — inline right side of the bubble */}
                         <button
                             onClick={handleLike}
-                            className={`flex items-center gap-1 mt-1.5 text-xs transition-all duration-200 ${liked
+                            className={`flex-shrink-0 flex items-center gap-0.5 mt-3 transition-all duration-200 ${liked
                                     ? 'text-red-500'
-                                    : 'text-[rgb(90,90,100)] hover:text-red-400'
+                                    : 'text-[rgb(70,70,80)] hover:text-red-400'
                                 }`}
                         >
                             <motion.div
@@ -230,11 +230,13 @@ export default function CommentItem({
                                 animate={{ scale: 1 }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 10 }}
                             >
-                                <Heart className={`w-3.5 h-3.5 ${liked ? 'fill-red-500' : ''}`} />
+                                <Heart className={`w-3 h-3 ${liked ? 'fill-red-500' : ''}`} />
                             </motion.div>
-                            {likeCount > 0 && <span>{likeCount}</span>}
+                            {likeCount > 0 && (
+                                <span className="text-[10px] leading-none">{likeCount}</span>
+                            )}
                         </button>
-                    </>
+                    </div>
                 )}
             </div>
 

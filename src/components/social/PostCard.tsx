@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, MessageCircle, MoreHorizontal, Pencil, Trash2, Loader2, Send } from 'lucide-react';
+import { Heart, MessageCircle, Repeat2, MoreHorizontal, Pencil, Trash2, Loader2, Send } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { getPostComments, createComment, togglePostLike } from '@/app/actions/social-actions';
+import { getPostComments, createComment, togglePostLike, toggleRepost } from '@/app/actions/social-actions';
 import { toast } from 'sonner';
 import CommentItem from './CommentItem';
 
@@ -31,8 +31,16 @@ interface PostCardProps {
         content: string | null;
         imageUrl: string | null;
         author: Author;
-        _count: { comments: number; likes: number };
+        _count: { comments: number; likes: number; reposts: number };
         isLiked?: boolean;
+        isReposted?: boolean;
+        repostedBy?: {
+            id: string;
+            displayName: string | null;
+            profileImageUrl: string | null;
+            email: string;
+            repostId: string;
+        } | null;
         createdAt: string | Date;
         updatedAt: string | Date;
     };
@@ -53,6 +61,9 @@ export default function PostCard({ post, currentUserId, onEdit, onDelete, index 
     const [liked, setLiked] = useState(post.isLiked ?? false);
     const [likeCount, setLikeCount] = useState(post._count.likes ?? 0);
     const [likingInProgress, setLikingInProgress] = useState(false);
+    const [reposted, setReposted] = useState(post.isReposted ?? false);
+    const [repostCount, setRepostCount] = useState(post._count.reposts ?? 0);
+    const [repostInProgress, setRepostInProgress] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const isAuthor = currentUserId === post.author.id;
@@ -78,7 +89,6 @@ export default function PostCard({ post, currentUserId, onEdit, onDelete, index 
         }
         if (likingInProgress) return;
 
-        // Optimistic update
         setLiked(!liked);
         setLikeCount((c) => (liked ? c - 1 : c + 1));
         setLikingInProgress(true);
@@ -89,7 +99,6 @@ export default function PostCard({ post, currentUserId, onEdit, onDelete, index 
                 setLiked(result.liked!);
                 setLikeCount(result.likeCount!);
             } else {
-                // Revert optimistic update
                 setLiked(liked);
                 setLikeCount(likeCount);
                 toast.error(result.error || 'Failed to like post');
@@ -100,6 +109,45 @@ export default function PostCard({ post, currentUserId, onEdit, onDelete, index 
             toast.error('Something went wrong');
         } finally {
             setLikingInProgress(false);
+        }
+    };
+
+    const handleRepost = async () => {
+        if (!currentUserId) {
+            toast.error('Please sign in to repost');
+            return;
+        }
+        if (isAuthor) {
+            toast.error("You can't repost your own post");
+            return;
+        }
+        if (repostInProgress) return;
+
+        setReposted(!reposted);
+        setRepostCount((c) => (reposted ? c - 1 : c + 1));
+        setRepostInProgress(true);
+
+        try {
+            const result = await toggleRepost(post.id);
+            if (result.success) {
+                setReposted(result.reposted!);
+                setRepostCount(result.repostCount!);
+                if (result.reposted) {
+                    toast.success('Reposted!');
+                } else {
+                    toast.success('Repost removed');
+                }
+            } else {
+                setReposted(reposted);
+                setRepostCount(repostCount);
+                toast.error(result.error || 'Failed to repost');
+            }
+        } catch {
+            setReposted(reposted);
+            setRepostCount(repostCount);
+            toast.error('Something went wrong');
+        } finally {
+            setRepostInProgress(false);
         }
     };
 
@@ -166,6 +214,18 @@ export default function PostCard({ post, currentUserId, onEdit, onDelete, index 
             transition={{ duration: 0.4, delay: index * 0.05 }}
             className="rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[rgb(26,28,30)] overflow-hidden hover:border-[rgba(255,255,255,0.1)] transition-colors duration-300"
         >
+            {/* Reposted By Header */}
+            {post.repostedBy && (
+                <div className="flex items-center gap-2 px-5 pt-4 pb-1">
+                    <Repeat2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-xs text-emerald-400 font-medium">
+                        {post.repostedBy.id === currentUserId
+                            ? 'You reposted'
+                            : `${post.repostedBy.displayName || post.repostedBy.email} reposted`}
+                    </span>
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex items-center justify-between p-5 pb-3">
                 <div className="flex items-center gap-3">
@@ -193,8 +253,8 @@ export default function PostCard({ post, currentUserId, onEdit, onDelete, index 
                     </div>
                 </div>
 
-                {/* Menu */}
-                {isAuthor && (
+                {/* Menu — only show for original author, not on reposts */}
+                {isAuthor && !post.repostedBy && (
                     <div className="relative" ref={menuRef}>
                         <button
                             onClick={() => setShowMenu(!showMenu)}
@@ -257,14 +317,14 @@ export default function PostCard({ post, currentUserId, onEdit, onDelete, index 
                 </div>
             )}
 
-            {/* Actions */}
-            <div className="px-5 py-3 border-t border-[rgba(255,255,255,0.04)] flex items-center gap-5">
-                {/* Like button */}
+            {/* Actions Bar */}
+            <div className="px-5 py-3 border-t border-[rgba(255,255,255,0.04)] flex items-center gap-1">
+                {/* Like */}
                 <button
                     onClick={handleLike}
-                    className={`flex items-center gap-1.5 text-sm transition-all duration-200 ${liked
-                            ? 'text-red-500'
-                            : 'text-[rgb(130,130,140)] hover:text-red-400'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 ${liked
+                        ? 'text-red-500 bg-[rgba(255,60,60,0.08)]'
+                        : 'text-[rgb(130,130,140)] hover:text-red-400 hover:bg-[rgba(255,255,255,0.04)]'
                         }`}
                 >
                     <motion.div
@@ -273,20 +333,40 @@ export default function PostCard({ post, currentUserId, onEdit, onDelete, index 
                         animate={{ scale: 1 }}
                         transition={{ type: 'spring', stiffness: 400, damping: 10 }}
                     >
-                        <Heart
-                            className={`w-[18px] h-[18px] ${liked ? 'fill-red-500' : ''}`}
-                        />
+                        <Heart className={`w-[18px] h-[18px] ${liked ? 'fill-red-500' : ''}`} />
                     </motion.div>
-                    <span>{likeCount > 0 ? likeCount : ''}</span>
+                    {likeCount > 0 && <span>{likeCount}</span>}
                 </button>
 
-                {/* Comment button */}
+                {/* Comment */}
                 <button
                     onClick={toggleComments}
-                    className="flex items-center gap-1.5 text-sm text-[rgb(130,130,140)] hover:text-[#DAFF01] transition-colors duration-200"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 ${showComments
+                        ? 'text-[#DAFF01] bg-[rgba(218,255,1,0.08)]'
+                        : 'text-[rgb(130,130,140)] hover:text-[#DAFF01] hover:bg-[rgba(255,255,255,0.04)]'
+                        }`}
                 >
                     <MessageCircle className="w-[18px] h-[18px]" />
-                    <span>{commentCount > 0 ? commentCount : ''}</span>
+                    {commentCount > 0 && <span>{commentCount}</span>}
+                </button>
+
+                {/* Repost */}
+                <button
+                    onClick={handleRepost}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 ${reposted
+                        ? 'text-emerald-400 bg-[rgba(52,211,153,0.08)]'
+                        : 'text-[rgb(130,130,140)] hover:text-emerald-400 hover:bg-[rgba(255,255,255,0.04)]'
+                        }`}
+                >
+                    <motion.div
+                        key={reposted ? 'reposted' : 'not-reposted'}
+                        initial={{ scale: 0.8, rotate: 0 }}
+                        animate={{ scale: 1, rotate: reposted ? 360 : 0 }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 12 }}
+                    >
+                        <Repeat2 className="w-[18px] h-[18px]" />
+                    </motion.div>
+                    {repostCount > 0 && <span>{repostCount}</span>}
                 </button>
             </div>
 

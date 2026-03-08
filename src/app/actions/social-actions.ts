@@ -47,7 +47,7 @@ export async function createPost(data: { content?: string; imageUrl?: string }) 
                         email: true,
                     },
                 },
-                _count: { select: { comments: true } },
+                _count: { select: { comments: true, likes: true, reposts: true } },
             },
         });
 
@@ -91,7 +91,7 @@ export async function updatePost(
                         email: true,
                     },
                 },
-                _count: { select: { comments: true } },
+                _count: { select: { comments: true, likes: true, reposts: true } },
             },
         });
 
@@ -121,19 +121,61 @@ export async function deletePost(postId: string) {
 
 export async function getPosts(cursor?: string, limit: number = 20) {
     try {
-        // Try to get current user for like status (don't fail if not logged in)
+        // Try to get current user for like/repost status
         let currentUserId: string | null = null;
         try {
             const user = await getAuthenticatedUser();
             currentUserId = user.id;
         } catch { /* not logged in, that's ok */ }
 
+        const userInclude = {
+            author: {
+                select: {
+                    id: true,
+                    displayName: true,
+                    profileImageUrl: true,
+                    email: true,
+                },
+            },
+            _count: { select: { comments: true, likes: true, reposts: true } },
+            ...(currentUserId ? {
+                likes: {
+                    where: { userId: currentUserId },
+                    select: { id: true },
+                    take: 1,
+                },
+                reposts: {
+                    where: { userId: currentUserId },
+                    select: { id: true },
+                    take: 1,
+                },
+            } : {}),
+        };
+
+        // Parse composite cursor: "post:id" or "repost:id"
+        let postCursor: string | undefined;
+        let repostCursor: string | undefined;
+        if (cursor) {
+            const [type, id] = cursor.split(':');
+            if (type === 'repost') repostCursor = id;
+            else postCursor = id;
+        }
+
+        // Fetch original posts
         const posts = await prisma.post.findMany({
             take: limit + 1,
-            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+            ...(postCursor ? { cursor: { id: postCursor }, skip: 1 } : {}),
+            orderBy: { createdAt: 'desc' },
+            include: userInclude,
+        });
+
+        // Fetch reposts (with full original post data)
+        const reposts = await prisma.repost.findMany({
+            take: limit + 1,
+            ...(repostCursor ? { cursor: { id: repostCursor }, skip: 1 } : {}),
             orderBy: { createdAt: 'desc' },
             include: {
-                author: {
+                user: {
                     select: {
                         id: true,
                         displayName: true,
@@ -141,29 +183,75 @@ export async function getPosts(cursor?: string, limit: number = 20) {
                         email: true,
                     },
                 },
-                _count: { select: { comments: true, likes: true } },
-                ...(currentUserId ? {
-                    likes: {
-                        where: { userId: currentUserId },
-                        select: { id: true },
-                        take: 1,
-                    },
-                } : {}),
+                post: {
+                    include: userInclude,
+                },
             },
         });
 
-        const hasMore = posts.length > limit;
-        const resultPosts = hasMore ? posts.slice(0, limit) : posts;
-        const nextCursor = hasMore ? resultPosts[resultPosts.length - 1]?.id : null;
+        // Build unified feed items
+        type FeedItem = {
+            feedId: string;
+            feedTimestamp: Date;
+            post: any;
+            repostedBy?: {
+                id: string;
+                displayName: string | null;
+                profileImageUrl: string | null;
+                email: string;
+                repostId: string;
+            };
+        };
 
-        // Transform to add isLiked field
-        const postsWithLikeStatus = resultPosts.map((post: any) => ({
-            ...post,
-            isLiked: (post.likes?.length ?? 0) > 0,
-            likes: undefined, // remove raw likes array
+        const feedItems: FeedItem[] = [];
+
+        // Add original posts
+        for (const post of posts) {
+            feedItems.push({
+                feedId: `post:${post.id}`,
+                feedTimestamp: new Date(post.createdAt),
+                post,
+            });
+        }
+
+        // Add reposts (skip if the original post is already in the feed as an original)
+        const originalPostIds = new Set(posts.map(p => p.id));
+        for (const repost of reposts) {
+            feedItems.push({
+                feedId: `repost:${repost.id}`,
+                feedTimestamp: new Date(repost.createdAt),
+                post: repost.post,
+                repostedBy: {
+                    id: repost.user.id,
+                    displayName: repost.user.displayName,
+                    profileImageUrl: repost.user.profileImageUrl,
+                    email: repost.user.email,
+                    repostId: repost.id,
+                },
+            });
+        }
+
+        // Sort by timestamp desc
+        feedItems.sort((a, b) => b.feedTimestamp.getTime() - a.feedTimestamp.getTime());
+
+        // Paginate
+        const hasMore = feedItems.length > limit;
+        const resultItems = feedItems.slice(0, limit);
+        const lastItem = resultItems[resultItems.length - 1];
+        const nextCursorValue = hasMore && lastItem ? lastItem.feedId : null;
+
+        // Transform to add isLiked/isReposted fields
+        const transformedItems = resultItems.map((item) => ({
+            ...item.post,
+            feedId: item.feedId,
+            isLiked: (item.post.likes?.length ?? 0) > 0,
+            isReposted: (item.post.reposts?.length ?? 0) > 0,
+            likes: undefined,
+            reposts: undefined,
+            repostedBy: item.repostedBy || null,
         }));
 
-        return { success: true, posts: postsWithLikeStatus, nextCursor };
+        return { success: true, posts: transformedItems, nextCursor: nextCursorValue };
     } catch (error) {
         console.error('Failed to get posts:', error);
         return { success: false, posts: [], nextCursor: null, error: (error as Error).message };
@@ -364,6 +452,42 @@ export async function toggleCommentLike(commentId: string) {
         }
     } catch (error) {
         console.error('Failed to toggle comment like:', error);
+        return { success: false, error: (error as Error).message };
+    }
+}
+
+// ============================================
+// REPOST TOGGLE
+// ============================================
+export async function toggleRepost(postId: string) {
+    try {
+        const user = await getAuthenticatedUser();
+
+        const post = await prisma.post.findUnique({ where: { id: postId } });
+        if (!post) return { success: false, error: 'Post not found' };
+
+        // Can't repost your own post
+        if (post.authorId === user.id) {
+            return { success: false, error: 'You cannot repost your own post' };
+        }
+
+        const existingRepost = await prisma.repost.findUnique({
+            where: { postId_userId: { postId, userId: user.id } },
+        });
+
+        if (existingRepost) {
+            await prisma.repost.delete({ where: { id: existingRepost.id } });
+            const count = await prisma.repost.count({ where: { postId } });
+            return { success: true, reposted: false, repostCount: count };
+        } else {
+            await prisma.repost.create({
+                data: { postId, userId: user.id },
+            });
+            const count = await prisma.repost.count({ where: { postId } });
+            return { success: true, reposted: true, repostCount: count };
+        }
+    } catch (error) {
+        console.error('Failed to toggle repost:', error);
         return { success: false, error: (error as Error).message };
     }
 }
