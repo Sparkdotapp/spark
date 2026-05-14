@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
+import Link from 'next/link';
 import {
   User,
   Globe,
@@ -19,11 +20,20 @@ import {
   X,
   Plus,
   ChevronRight,
+  MapPin,
+  Building2,
+  GraduationCap,
+  Calendar,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { getCurrentDbUser, updateCurrentUserProfile } from '@/app/actions/user-actions';
+import {
+  getCurrentDbUser,
+  updateCurrentUserProfile,
+  checkUsernameAvailability,
+  getUserProfileByUsername,
+} from '@/app/actions/user-actions';
 
-// ─── helpers ───────────────────────────────────────────────
+// ─── shared helpers ────────────────────────────────────────
 function SectionHeader({ icon: Icon, title, complete }: { icon: any; title: string; complete: boolean }) {
   return (
     <div className="flex items-center justify-between mb-6">
@@ -60,6 +70,7 @@ function SaveButton({ saving, disabled, onClick }: { saving: boolean; disabled?:
   );
 }
 
+// ─── edit-mode helpers ─────────────────────────────────────
 function ChipGroup({ options, value, onChange, multi }: { options: string[]; value: string | string[]; onChange: (v: string | string[]) => void; multi?: boolean }) {
   function toggle(opt: string) {
     if (multi) {
@@ -122,68 +133,133 @@ function TagInput({ values, onChange, placeholder }: { values: string[]; onChang
   );
 }
 
+// ─── read-only helpers ─────────────────────────────────────
+function DisplayValue({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-sm text-white py-1.5">
+      {children || <span className="text-[rgb(80,80,90)] italic">Not provided</span>}
+    </p>
+  );
+}
+
+function DisplayBadge({ value }: { value?: string | null }) {
+  if (!value) return null;
+  return (
+    <span className="inline-block px-3 py-1.5 text-xs rounded-full bg-[rgba(218,255,1,0.06)] border border-[rgba(218,255,1,0.15)] text-[#DAFF01]">
+      {value}
+    </span>
+  );
+}
+
+function TagDisplay({ values }: { values: string[] }) {
+  if (!values || values.length === 0) return <p className="text-sm text-[rgb(80,80,90)] italic py-1.5">Not added yet</p>;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {values.map((v) => (
+        <span key={v} className="px-3 py-1 rounded-full bg-[rgba(218,255,1,0.08)] border border-[rgba(218,255,1,0.2)] text-[#DAFF01] text-xs font-medium">
+          {v}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function EmptySection({ message }: { message: string }) {
+  return (
+    <div className="py-8 text-center">
+      <p className="text-sm text-[rgb(80,80,90)]">{message}</p>
+    </div>
+  );
+}
+
 // ─── main component ────────────────────────────────────────
 export default function ProfileLayout() {
-  const user = useUser();
+  const params = useParams();
+  const viewUsername = params?.username as string | undefined;
+  const authUser = useUser();
   const router = useRouter();
+
   const [dbUser, setDbUser] = useState<any>(null);
+  const [editable, setEditable] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [activeSection, setActiveSection] = useState('basic');
 
-  // Section states
-  const [basic, setBasic] = useState({ firstName: '', lastName: '', phone: '', gender: '', userType: '', domain: '', course: '', specialization: '', degree: '', courseStartYear: '', graduationYear: '', college: '', location: '', courseType: '', isGraduated: false, company: '', designation: '' });
+  // ── edit-mode form states ──
+  const [basic, setBasic] = useState({
+    firstName: '', lastName: '', phone: '', gender: '', userType: '', domain: '',
+    course: '', specialization: '', degree: '', courseStartYear: '', graduationYear: '',
+    college: '', location: '', courseType: '', isGraduated: false, company: '', designation: '', username: '',
+  });
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [about, setAbout] = useState({ bio: '' });
   const [skills, setSkills] = useState<string[]>([]);
   const [personal, setPersonal] = useState({ pronouns: '', dateOfBirth: '', location: '', permanentAddress: '', hobbies: [] as string[] });
   const [social, setSocial] = useState({ githubUrl: '', linkedinUrl: '', twitterUrl: '', instagramUrl: '', facebookUrl: '', websiteUrl: '' });
-
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [savedSection, setSavedSection] = useState<string | null>(null);
 
+  // ── data loading ──
   useEffect(() => {
-    getCurrentDbUser().then((u) => {
-      if (!u) { setLoading(false); return; }
-      setDbUser(u);
-      setBasic({
-        firstName: u.firstName || '',
-        lastName: u.lastName || '',
-        phone: u.phone || '',
-        gender: u.gender || '',
-        userType: u.userType || '',
-        domain: u.domain || '',
-        course: u.course || '',
-        specialization: u.specialization || '',
-        degree: u.degree || '',
-        courseStartYear: u.courseStartYear ? String(u.courseStartYear) : '',
-        graduationYear: u.graduationYear ? String(u.graduationYear) : '',
-        college: u.college || '',
-        location: u.location || '',
-        courseType: u.courseType || '',
-        isGraduated: u.isGraduated || false,
-        company: u.company || '',
-        designation: u.designation || '',
-      });
-      setAbout({ bio: u.bio || '' });
-      setSkills(u.skills || []);
-      setPersonal({
-        pronouns: u.pronouns || '',
-        dateOfBirth: u.dateOfBirth ? new Date(u.dateOfBirth).toISOString().split('T')[0] : '',
-        location: u.location || '',
-        permanentAddress: u.permanentAddress || '',
-        hobbies: u.hobbies || [],
-      });
-      setSocial({
-        githubUrl: u.githubUrl || '',
-        linkedinUrl: u.linkedinUrl || '',
-        twitterUrl: u.twitterUrl || '',
-        instagramUrl: u.instagramUrl || '',
-        facebookUrl: u.facebookUrl || '',
-        websiteUrl: u.websiteUrl || '',
-      });
-      setLoading(false);
-    });
-  }, []);
+    async function loadProfile() {
+      setLoading(true);
+      setNotFound(false);
 
+      if (!viewUsername) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      const currentUser = await getCurrentDbUser();
+
+      if (currentUser && currentUser.username === viewUsername) {
+        // ── OWN PROFILE — full edit mode ──
+        setEditable(true);
+        setDbUser(currentUser);
+        const u = currentUser;
+        setBasic({
+          firstName: u.firstName || '', lastName: u.lastName || '',
+          phone: u.phone || '', gender: u.gender || '', userType: u.userType || '',
+          domain: u.domain || '', course: u.course || '', specialization: u.specialization || '',
+          degree: u.degree || '', courseStartYear: u.courseStartYear ? String(u.courseStartYear) : '',
+          graduationYear: u.graduationYear ? String(u.graduationYear) : '',
+          college: u.college || '', location: u.location || '', courseType: u.courseType || '',
+          isGraduated: u.isGraduated || false, company: u.company || '',
+          designation: u.designation || '', username: u.username || '',
+        });
+        setAbout({ bio: u.bio || '' });
+        setSkills(u.skills || []);
+        setPersonal({
+          pronouns: u.pronouns || '',
+          dateOfBirth: u.dateOfBirth ? new Date(u.dateOfBirth).toISOString().split('T')[0] : '',
+          location: u.location || '', permanentAddress: u.permanentAddress || '',
+          hobbies: u.hobbies || [],
+        });
+        setSocial({
+          githubUrl: u.githubUrl || '', linkedinUrl: u.linkedinUrl || '',
+          twitterUrl: u.twitterUrl || '', instagramUrl: u.instagramUrl || '',
+          facebookUrl: u.facebookUrl || '', websiteUrl: u.websiteUrl || '',
+        });
+      } else {
+        // ── SOMEONE ELSE'S PROFILE — read only ──
+        setEditable(false);
+        const profileData = await getUserProfileByUsername(viewUsername);
+        if (!profileData) {
+          setNotFound(true);
+          setLoading(false);
+          return;
+        }
+        setDbUser(profileData);
+      }
+
+      setLoading(false);
+    }
+    loadProfile();
+  }, [viewUsername]);
+
+  // ── save (edit mode only) ──
   async function save(section: string, data: Record<string, unknown>) {
     setSavingSection(section);
     try {
@@ -194,6 +270,7 @@ export default function ProfileLayout() {
     finally { setSavingSection(null); }
   }
 
+  // ── sections ──
   const sections = [
     { id: 'basic', label: 'Basic Details', icon: User },
     { id: 'about', label: 'About', icon: BookOpen },
@@ -204,43 +281,76 @@ export default function ProfileLayout() {
 
   function isSectionComplete(id: string) {
     if (!dbUser) return false;
-    if (id === 'basic') return !!(dbUser.firstName && dbUser.phone && dbUser.college);
+    if (id === 'basic') return !!(dbUser.firstName && dbUser.college);
     if (id === 'about') return !!dbUser.bio;
     if (id === 'skills') return (dbUser.skills || []).length > 0;
-    if (id === 'personal') return !!dbUser.dateOfBirth;
+    if (id === 'personal') return editable ? !!dbUser.dateOfBirth : !!((dbUser.pronouns) || (dbUser.hobbies?.length > 0));
     if (id === 'social') return !!(dbUser.linkedinUrl || dbUser.githubUrl);
     return false;
   }
 
+  // ── loading ──
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <Loader2 className="w-6 h-6 animate-spin text-[rgb(130,130,140)]" />
     </div>
   );
 
+  // ── not found ──
+  if (notFound) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <div className="w-16 h-16 rounded-2xl bg-[rgba(255,255,255,0.04)] flex items-center justify-center">
+        <User className="w-8 h-8 text-[rgb(80,80,90)]" />
+      </div>
+      <h1 className="text-xl font-bold text-white">User not found</h1>
+      <p className="text-sm text-[rgb(100,100,110)]">No user with username &ldquo;@{viewUsername}&rdquo; exists.</p>
+      <Link href="/" className="text-sm text-[#DAFF01] hover:underline">Go home</Link>
+    </div>
+  );
+
+  // ── derived display values ──
+  const profileImg = dbUser?.profileImageUrl || (editable ? authUser?.profileImageUrl : null);
+  const fullName = dbUser?.firstName
+    ? `${dbUser.firstName}${dbUser.lastName ? ` ${dbUser.lastName}` : ''}`
+    : (dbUser?.displayName || 'User');
+  const initials = (fullName[0] || 'U').toUpperCase();
+
+  // ─── social links (for read-only view) ───
+  const socialLinksData = [
+    { url: dbUser?.githubUrl, icon: Github, label: 'GitHub' },
+    { url: dbUser?.linkedinUrl, icon: Linkedin, label: 'LinkedIn' },
+    { url: dbUser?.twitterUrl, icon: Twitter, label: 'Twitter' },
+    { url: dbUser?.instagramUrl, icon: Instagram, label: 'Instagram' },
+    { url: dbUser?.facebookUrl, icon: Facebook, label: 'Facebook' },
+    { url: dbUser?.websiteUrl, icon: Globe, label: 'Website' },
+  ].filter((s) => s.url);
+
   return (
     <div className="max-w-[1100px] mt-24 mx-auto px-4 sm:px-6 py-6 sm:py-10">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex items-center gap-4 sm:gap-5 mb-8 sm:mb-10">
         <div className="relative shrink-0">
-          {user?.profileImageUrl ? (
-            <img src={user.profileImageUrl} alt="" className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-[rgba(218,255,1,0.2)]" />
+          {profileImg ? (
+            <img src={profileImg} alt="" className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-[rgba(218,255,1,0.2)]" />
           ) : (
             <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl bg-[rgba(218,255,1,0.08)] flex items-center justify-center text-xl sm:text-2xl font-bold text-[#DAFF01] border-2 border-[rgba(218,255,1,0.15)]">
-              {(dbUser?.firstName || dbUser?.displayName || 'U')[0].toUpperCase()}
+              {initials}
             </div>
           )}
         </div>
         <div className="min-w-0">
-          <h1 className="text-lg sm:text-2xl font-bold text-white truncate">
-            {dbUser?.firstName ? `${dbUser.firstName}${dbUser.lastName ? ` ${dbUser.lastName}` : ''}` : (dbUser?.displayName || 'Your Profile')}
-          </h1>
-          <p className="text-xs sm:text-sm text-[rgb(130,130,140)] truncate">{dbUser?.email}</p>
-          {dbUser?.userType && <p className="text-[11px] sm:text-xs text-[rgb(100,100,110)] mt-1 truncate">{dbUser.userType}{dbUser.college ? ` · ${dbUser.college}` : ''}</p>}
+          <h1 className="text-lg sm:text-2xl font-bold text-white truncate">{fullName}</h1>
+          {dbUser?.username && <p className="text-xs sm:text-sm text-[rgb(130,130,140)] truncate">@{dbUser.username}</p>}
+          {editable && <p className="text-[11px] text-[rgb(100,100,110)] truncate mt-0.5">{dbUser?.email}</p>}
+          {dbUser?.userType && (
+            <p className="text-[11px] sm:text-xs text-[rgb(100,100,110)] mt-1 truncate">
+              {dbUser.userType}{dbUser.college ? ` · ${dbUser.college}` : ''}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Mobile section tabs — horizontal scroll */}
+      {/* ── Mobile section tabs ── */}
       <div className="md:hidden mb-5 -mx-4 px-4 overflow-x-auto scrollbar-hide">
         <div className="flex gap-2 min-w-max pb-1">
           {sections.map((s) => (
@@ -266,7 +376,7 @@ export default function ProfileLayout() {
       </div>
 
       <div className="flex gap-6">
-        {/* Left sidebar — desktop only, sticky */}
+        {/* ── Desktop sidebar ── */}
         <div className="hidden md:block w-[220px] shrink-0">
           <div className="sticky top-28 space-y-1">
             {sections.map((s) => (
@@ -292,219 +402,408 @@ export default function ProfileLayout() {
           </div>
         </div>
 
-        {/* Content area */}
+        {/* ── Content area ── */}
         <div className="flex-1 min-w-0 p-4 sm:p-7 rounded-2xl bg-[rgb(26,28,30)] border border-[rgba(255,255,255,0.07)]">
 
-          {/* ── BASIC DETAILS ── */}
+          {/* ════════ BASIC DETAILS ════════ */}
           {activeSection === 'basic' && (
             <div>
               <SectionHeader icon={User} title="Basic Details" complete={isSectionComplete('basic')} />
-              <div className="space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+              {editable ? (
+                /* ── edit mode ── */
+                <div className="space-y-5">
+                  {/* Username */}
                   <div>
-                    <FieldLabel required>First Name</FieldLabel>
-                    <Input value={basic.firstName} onChange={(e) => setBasic((b) => ({ ...b, firstName: e.target.value }))} placeholder="First name" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    <FieldLabel required>Username</FieldLabel>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(100,100,110)] text-sm">@</span>
+                      <Input
+                        value={basic.username}
+                        onChange={(e) => {
+                          const val = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                          setBasic((b) => ({ ...b, username: val }));
+                          if (val.length >= 3) {
+                            setCheckingUsername(true);
+                            checkUsernameAvailability(val).then((r) => {
+                              setUsernameAvailable(r.available);
+                              setCheckingUsername(false);
+                            });
+                          } else {
+                            setUsernameAvailable(null);
+                          }
+                        }}
+                        placeholder="your_username"
+                        maxLength={30}
+                        className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white pl-8"
+                      />
+                      {basic.username.length >= 3 && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          {checkingUsername ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-[rgb(130,130,140)]" />
+                          ) : usernameAvailable ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          ) : usernameAvailable === false ? (
+                            <X className="w-4 h-4 text-red-400" />
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                    {basic.username && basic.username.length < 3 && (
+                      <p className="text-[11px] text-amber-400 mt-1">Must be at least 3 characters</p>
+                    )}
+                    {!checkingUsername && usernameAvailable === false && basic.username.length >= 3 && (
+                      <p className="text-[11px] text-red-400 mt-1">Username is taken</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <FieldLabel required>First Name</FieldLabel>
+                      <Input value={basic.firstName} onChange={(e) => setBasic((b) => ({ ...b, firstName: e.target.value }))} placeholder="First name" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    </div>
+                    <div>
+                      <FieldLabel>Last Name</FieldLabel>
+                      <Input value={basic.lastName} onChange={(e) => setBasic((b) => ({ ...b, lastName: e.target.value }))} placeholder="Last name" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    </div>
                   </div>
                   <div>
-                    <FieldLabel>Last Name</FieldLabel>
-                    <Input value={basic.lastName} onChange={(e) => setBasic((b) => ({ ...b, lastName: e.target.value }))} placeholder="Last name" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                    <FieldLabel required>Mobile</FieldLabel>
+                    <Input value={basic.phone} onChange={(e) => setBasic((b) => ({ ...b, phone: e.target.value }))} placeholder="e.g. +91 98765 43210" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
                   </div>
-                </div>
-                <div>
-                  <FieldLabel required>Mobile</FieldLabel>
-                  <Input value={basic.phone} onChange={(e) => setBasic((b) => ({ ...b, phone: e.target.value }))} placeholder="e.g. +91 98765 43210" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
-                </div>
-                <div>
-                  <FieldLabel>Gender</FieldLabel>
-                  <ChipGroup options={['Male', 'Female', 'Non-binary', 'Prefer not to say']} value={basic.gender} onChange={(v) => setBasic((b) => ({ ...b, gender: v as string }))} />
-                </div>
-                <div>
-                  <FieldLabel>User Type</FieldLabel>
-                  <ChipGroup options={['College Student', 'Professional', 'School Student', 'Fresher']} value={basic.userType} onChange={(v) => setBasic((b) => ({ ...b, userType: v as string }))} />
-                </div>
-                <div>
-                  <FieldLabel>Domain</FieldLabel>
-                  <ChipGroup options={['Engineering', 'Management', 'Arts & Science', 'Medicine', 'Law', 'Others']} value={basic.domain} onChange={(v) => setBasic((b) => ({ ...b, domain: v as string }))} />
-                </div>
+                  <div>
+                    <FieldLabel>Gender</FieldLabel>
+                    <ChipGroup options={['Male', 'Female', 'Non-binary', 'Prefer not to say']} value={basic.gender} onChange={(v) => setBasic((b) => ({ ...b, gender: v as string }))} />
+                  </div>
+                  <div>
+                    <FieldLabel>User Type</FieldLabel>
+                    <ChipGroup options={['College Student', 'Professional', 'School Student', 'Fresher']} value={basic.userType} onChange={(v) => setBasic((b) => ({ ...b, userType: v as string }))} />
+                  </div>
+                  <div>
+                    <FieldLabel>Domain</FieldLabel>
+                    <ChipGroup options={['Engineering', 'Management', 'Arts & Science', 'Medicine', 'Law', 'Others']} value={basic.domain} onChange={(v) => setBasic((b) => ({ ...b, domain: v as string }))} />
+                  </div>
 
-                {basic.userType !== 'Professional' ? (
-                  <>
-                    <div>
-                      <FieldLabel>Course / Degree</FieldLabel>
-                      <select value={basic.degree} onChange={(e) => setBasic((b) => ({ ...b, degree: e.target.value }))} className="w-full px-3 py-2.5 text-sm rounded-lg bg-[rgb(17,17,19)] border border-[rgba(255,255,255,0.08)] text-white outline-none">
-                        <option value="">Select Course</option>
-                        {['B.Tech / B.E.', 'BCA', 'B.Sc', 'B.Com', 'BBA', 'M.Tech', 'MCA', 'MBA', 'M.Sc', 'PhD', 'Diploma', 'Other'].map((d) => <option key={d}>{d}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <FieldLabel>Specialization / Branch</FieldLabel>
-                      <Input value={basic.specialization} onChange={(e) => setBasic((b) => ({ ...b, specialization: e.target.value }))} placeholder="e.g. Computer Science" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {basic.userType !== 'Professional' ? (
+                    <>
                       <div>
-                        <FieldLabel>Course Start Year</FieldLabel>
-                        <Input value={basic.courseStartYear} onChange={(e) => setBasic((b) => ({ ...b, courseStartYear: e.target.value }))} placeholder="e.g. 2022" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                        <FieldLabel>Course / Degree</FieldLabel>
+                        <select value={basic.degree} onChange={(e) => setBasic((b) => ({ ...b, degree: e.target.value }))} className="w-full px-3 py-2.5 text-sm rounded-lg bg-[rgb(17,17,19)] border border-[rgba(255,255,255,0.08)] text-white outline-none">
+                          <option value="">Select Course</option>
+                          {['B.Tech / B.E.', 'BCA', 'B.Sc', 'B.Com', 'BBA', 'M.Tech', 'MCA', 'MBA', 'M.Sc', 'PhD', 'Diploma', 'Other'].map((d) => <option key={d}>{d}</option>)}
+                        </select>
                       </div>
                       <div>
-                        <FieldLabel>Graduation Year</FieldLabel>
-                        <Input value={basic.graduationYear} onChange={(e) => setBasic((b) => ({ ...b, graduationYear: e.target.value }))} placeholder="e.g. 2026" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                        <FieldLabel>Specialization / Branch</FieldLabel>
+                        <Input value={basic.specialization} onChange={(e) => setBasic((b) => ({ ...b, specialization: e.target.value }))} placeholder="e.g. Computer Science" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
                       </div>
-                    </div>
-                    <div>
-                      <FieldLabel required>College / University</FieldLabel>
-                      <Input value={basic.college} onChange={(e) => setBasic((b) => ({ ...b, college: e.target.value }))} placeholder="e.g. Delhi Technological University" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <FieldLabel>Company</FieldLabel>
-                      <Input value={basic.company} onChange={(e) => setBasic((b) => ({ ...b, company: e.target.value }))} placeholder="e.g. Google, Microsoft" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
-                    </div>
-                    <div>
-                      <FieldLabel>Designation</FieldLabel>
-                      <Input value={basic.designation} onChange={(e) => setBasic((b) => ({ ...b, designation: e.target.value }))} placeholder="e.g. Software Engineer" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
-                    </div>
-                  </>
-                )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <FieldLabel>Course Start Year</FieldLabel>
+                          <Input value={basic.courseStartYear} onChange={(e) => setBasic((b) => ({ ...b, courseStartYear: e.target.value }))} placeholder="e.g. 2022" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                        </div>
+                        <div>
+                          <FieldLabel>Graduation Year</FieldLabel>
+                          <Input value={basic.graduationYear} onChange={(e) => setBasic((b) => ({ ...b, graduationYear: e.target.value }))} placeholder="e.g. 2026" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                        </div>
+                      </div>
+                      <div>
+                        <FieldLabel required>College / University</FieldLabel>
+                        <Input value={basic.college} onChange={(e) => setBasic((b) => ({ ...b, college: e.target.value }))} placeholder="e.g. Delhi Technological University" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <FieldLabel>Company</FieldLabel>
+                        <Input value={basic.company} onChange={(e) => setBasic((b) => ({ ...b, company: e.target.value }))} placeholder="e.g. Google, Microsoft" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                      </div>
+                      <div>
+                        <FieldLabel>Designation</FieldLabel>
+                        <Input value={basic.designation} onChange={(e) => setBasic((b) => ({ ...b, designation: e.target.value }))} placeholder="e.g. Software Engineer" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                      </div>
+                    </>
+                  )}
 
-                <div>
-                  <FieldLabel>Current Location</FieldLabel>
-                  <Input value={basic.location} onChange={(e) => setBasic((b) => ({ ...b, location: e.target.value }))} placeholder="e.g. Mumbai, Maharashtra" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                  <div>
+                    <FieldLabel>Current Location</FieldLabel>
+                    <Input value={basic.location} onChange={(e) => setBasic((b) => ({ ...b, location: e.target.value }))} placeholder="e.g. Mumbai, Maharashtra" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                  </div>
+                  <SaveButton
+                    saving={savingSection === 'basic'}
+                    onClick={() => save('basic', {
+                      firstName: basic.firstName,
+                      lastName: basic.lastName,
+                      displayName: basic.firstName ? `${basic.firstName}${basic.lastName ? ` ${basic.lastName}` : ''}` : undefined,
+                      phone: basic.phone,
+                      gender: basic.gender,
+                      userType: basic.userType,
+                      domain: basic.domain,
+                      course: basic.course || basic.degree,
+                      specialization: basic.specialization,
+                      degree: basic.degree,
+                      courseStartYear: basic.courseStartYear ? parseInt(basic.courseStartYear) : null,
+                      graduationYear: basic.graduationYear ? parseInt(basic.graduationYear) : null,
+                      courseType: basic.courseType,
+                      college: basic.college,
+                      location: basic.location,
+                      isGraduated: basic.userType === 'Professional',
+                      company: basic.company,
+                      designation: basic.designation,
+                      username: basic.username || undefined,
+                    })}
+                  />
                 </div>
-              </div>
-              <SaveButton
-                saving={savingSection === 'basic'}
-                onClick={() => save('basic', {
-                  firstName: basic.firstName,
-                  lastName: basic.lastName,
-                  displayName: basic.firstName ? `${basic.firstName}${basic.lastName ? ` ${basic.lastName}` : ''}` : undefined,
-                  phone: basic.phone,
-                  gender: basic.gender,
-                  userType: basic.userType,
-                  domain: basic.domain,
-                  course: basic.course || basic.degree,
-                  specialization: basic.specialization,
-                  degree: basic.degree,
-                  courseStartYear: basic.courseStartYear ? parseInt(basic.courseStartYear) : null,
-                  graduationYear: basic.graduationYear ? parseInt(basic.graduationYear) : null,
-                  courseType: basic.courseType,
-                  college: basic.college,
-                  location: basic.location,
-                  isGraduated: basic.userType === 'Professional',
-                  company: basic.company,
-                  designation: basic.designation,
-                })}
-              />
+              ) : (
+                /* ── read-only mode ── */
+                <div className="space-y-5">
+                  <div>
+                    <FieldLabel>Username</FieldLabel>
+                    <DisplayValue>@{dbUser?.username}</DisplayValue>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <FieldLabel>First Name</FieldLabel>
+                      <DisplayValue>{dbUser?.firstName}</DisplayValue>
+                    </div>
+                    <div>
+                      <FieldLabel>Last Name</FieldLabel>
+                      <DisplayValue>{dbUser?.lastName}</DisplayValue>
+                    </div>
+                  </div>
+                  {dbUser?.userType && (
+                    <div>
+                      <FieldLabel>User Type</FieldLabel>
+                      <div className="mt-1.5"><DisplayBadge value={dbUser.userType} /></div>
+                    </div>
+                  )}
+                  {dbUser?.domain && (
+                    <div>
+                      <FieldLabel>Domain</FieldLabel>
+                      <div className="mt-1.5"><DisplayBadge value={dbUser.domain} /></div>
+                    </div>
+                  )}
+                  {dbUser?.userType !== 'Professional' ? (
+                    <>
+                      {dbUser?.degree && (
+                        <div>
+                          <FieldLabel>Course / Degree</FieldLabel>
+                          <DisplayValue>{dbUser.degree}{dbUser.specialization ? ` — ${dbUser.specialization}` : ''}</DisplayValue>
+                        </div>
+                      )}
+                      {(dbUser?.courseStartYear || dbUser?.graduationYear) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {dbUser.courseStartYear && (
+                            <div>
+                              <FieldLabel>Course Start Year</FieldLabel>
+                              <DisplayValue>{dbUser.courseStartYear}</DisplayValue>
+                            </div>
+                          )}
+                          {dbUser.graduationYear && (
+                            <div>
+                              <FieldLabel>Graduation Year</FieldLabel>
+                              <DisplayValue>{dbUser.graduationYear}</DisplayValue>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {dbUser?.college && (
+                        <div>
+                          <FieldLabel>College / University</FieldLabel>
+                          <DisplayValue>{dbUser.college}</DisplayValue>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {dbUser?.company && (
+                        <div>
+                          <FieldLabel>Company</FieldLabel>
+                          <DisplayValue>{dbUser.company}{dbUser.designation ? ` · ${dbUser.designation}` : ''}</DisplayValue>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {dbUser?.location && (
+                    <div>
+                      <FieldLabel>Current Location</FieldLabel>
+                      <DisplayValue>{dbUser.location}</DisplayValue>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── ABOUT ── */}
+          {/* ════════ ABOUT ════════ */}
           {activeSection === 'about' && (
             <div>
               <SectionHeader icon={BookOpen} title="About" complete={isSectionComplete('about')} />
-              <div>
-                <FieldLabel required>About Me</FieldLabel>
-                <p className="text-[11px] text-[rgb(100,100,110)] mb-2">Maximum 1000 characters</p>
-                <textarea
-                  value={about.bio}
-                  onChange={(e) => setAbout({ bio: e.target.value })}
-                  maxLength={1000}
-                  rows={7}
-                  placeholder="Introduce yourself here! Share a brief overview of who you are, your interests, and connect with fellow users, recruiters & organizers."
-                  className="w-full px-4 py-3 text-sm rounded-xl bg-[rgb(17,17,19)] border border-[rgba(255,255,255,0.08)] text-white resize-none outline-none focus:border-[rgba(218,255,1,0.3)] transition-colors placeholder:text-[rgb(80,80,90)]"
-                />
-                <div className="text-right text-[11px] text-[rgb(100,100,110)] mt-1">{about.bio.length}/1000</div>
-              </div>
-              <SaveButton saving={savingSection === 'about'} onClick={() => save('about', { bio: about.bio })} />
+
+              {editable ? (
+                <div>
+                  <FieldLabel required>About Me</FieldLabel>
+                  <p className="text-[11px] text-[rgb(100,100,110)] mb-2">Maximum 1000 characters</p>
+                  <textarea
+                    value={about.bio}
+                    onChange={(e) => setAbout({ bio: e.target.value })}
+                    maxLength={1000}
+                    rows={7}
+                    placeholder="Introduce yourself here! Share a brief overview of who you are, your interests, and connect with fellow users, recruiters & organizers."
+                    className="w-full px-4 py-3 text-sm rounded-xl bg-[rgb(17,17,19)] border border-[rgba(255,255,255,0.08)] text-white resize-none outline-none focus:border-[rgba(218,255,1,0.3)] transition-colors placeholder:text-[rgb(80,80,90)]"
+                  />
+                  <div className="text-right text-[11px] text-[rgb(100,100,110)] mt-1">{about.bio.length}/1000</div>
+                  <SaveButton saving={savingSection === 'about'} onClick={() => save('about', { bio: about.bio })} />
+                </div>
+              ) : (
+                dbUser?.bio ? (
+                  <p className="text-sm text-[rgb(200,200,210)] leading-relaxed whitespace-pre-wrap">{dbUser.bio}</p>
+                ) : (
+                  <EmptySection message="No bio added yet." />
+                )
+              )}
             </div>
           )}
 
-          {/* ── SKILLS ── */}
+          {/* ════════ SKILLS ════════ */}
           {activeSection === 'skills' && (
             <div>
               <SectionHeader icon={Zap} title="Skills" complete={isSectionComplete('skills')} />
-              <div>
-                <FieldLabel>Your Skills</FieldLabel>
-                <p className="text-[11px] text-[rgb(100,100,110)] mb-3">Press Enter or click + to add a skill</p>
-                <TagInput values={skills} onChange={setSkills} placeholder="e.g. React, Python, Machine Learning..." />
-              </div>
-              <SaveButton saving={savingSection === 'skills'} onClick={() => save('skills', { skills })} />
+
+              {editable ? (
+                <div>
+                  <FieldLabel>Your Skills</FieldLabel>
+                  <p className="text-[11px] text-[rgb(100,100,110)] mb-3">Press Enter or click + to add a skill</p>
+                  <TagInput values={skills} onChange={setSkills} placeholder="e.g. React, Python, Machine Learning..." />
+                  <SaveButton saving={savingSection === 'skills'} onClick={() => save('skills', { skills })} />
+                </div>
+              ) : (
+                <div>
+                  <FieldLabel>Skills</FieldLabel>
+                  <div className="mt-2">
+                    <TagDisplay values={dbUser?.skills || []} />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── PERSONAL DETAILS ── */}
+          {/* ════════ PERSONAL DETAILS ════════ */}
           {activeSection === 'personal' && (
             <div>
               <SectionHeader icon={Heart} title="Personal Details" complete={isSectionComplete('personal')} />
-              <div className="space-y-5">
-                <div>
-                  <FieldLabel>Pronouns</FieldLabel>
-                  <ChipGroup options={['He/Him/his', 'She/Her', 'Them/They']} value={personal.pronouns} onChange={(v) => setPersonal((p) => ({ ...p, pronouns: v as string }))} />
+
+              {editable ? (
+                <div className="space-y-5">
+                  <div>
+                    <FieldLabel>Pronouns</FieldLabel>
+                    <ChipGroup options={['He/Him/his', 'She/Her', 'Them/They']} value={personal.pronouns} onChange={(v) => setPersonal((p) => ({ ...p, pronouns: v as string }))} />
+                  </div>
+                  <div>
+                    <FieldLabel>Date of Birth</FieldLabel>
+                    <Input type="date" value={personal.dateOfBirth} onChange={(e) => setPersonal((p) => ({ ...p, dateOfBirth: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                  </div>
+                  <div>
+                    <FieldLabel>Current Address</FieldLabel>
+                    <Input value={personal.location} onChange={(e) => setPersonal((p) => ({ ...p, location: e.target.value }))} placeholder="e.g. Mumbai, Maharashtra" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                  </div>
+                  <div>
+                    <FieldLabel>Permanent Address</FieldLabel>
+                    <Input value={personal.permanentAddress} onChange={(e) => setPersonal((p) => ({ ...p, permanentAddress: e.target.value }))} placeholder="Same as current address" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+                  </div>
+                  <div>
+                    <FieldLabel>Hobbies</FieldLabel>
+                    <TagInput values={personal.hobbies} onChange={(v) => setPersonal((p) => ({ ...p, hobbies: v }))} placeholder="e.g. Cricket, Chess, Reading..." />
+                  </div>
+                  <SaveButton
+                    saving={savingSection === 'personal'}
+                    onClick={() => save('personal', {
+                      pronouns: personal.pronouns,
+                      dateOfBirth: personal.dateOfBirth || null,
+                      location: personal.location,
+                      permanentAddress: personal.permanentAddress,
+                      hobbies: personal.hobbies,
+                    })}
+                  />
                 </div>
-                <div>
-                  <FieldLabel>Date of Birth</FieldLabel>
-                  <Input type="date" value={personal.dateOfBirth} onChange={(e) => setPersonal((p) => ({ ...p, dateOfBirth: e.target.value }))} className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
+              ) : (
+                <div className="space-y-5">
+                  {dbUser?.pronouns ? (
+                    <div>
+                      <FieldLabel>Pronouns</FieldLabel>
+                      <div className="mt-1.5"><DisplayBadge value={dbUser.pronouns} /></div>
+                    </div>
+                  ) : null}
+                  {(dbUser?.hobbies?.length > 0) ? (
+                    <div>
+                      <FieldLabel>Hobbies</FieldLabel>
+                      <div className="mt-2"><TagDisplay values={dbUser.hobbies} /></div>
+                    </div>
+                  ) : null}
+                  {!dbUser?.pronouns && !(dbUser?.hobbies?.length > 0) && (
+                    <EmptySection message="No personal details added yet." />
+                  )}
                 </div>
-                <div>
-                  <FieldLabel>Current Address</FieldLabel>
-                  <Input value={personal.location} onChange={(e) => setPersonal((p) => ({ ...p, location: e.target.value }))} placeholder="e.g. Mumbai, Maharashtra" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
-                </div>
-                <div>
-                  <FieldLabel>Permanent Address</FieldLabel>
-                  <Input value={personal.permanentAddress} onChange={(e) => setPersonal((p) => ({ ...p, permanentAddress: e.target.value }))} placeholder="Same as current address" className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white" />
-                </div>
-                <div>
-                  <FieldLabel>Hobbies</FieldLabel>
-                  <TagInput values={personal.hobbies} onChange={(v) => setPersonal((p) => ({ ...p, hobbies: v }))} placeholder="e.g. Cricket, Chess, Reading..." />
-                </div>
-              </div>
-              <SaveButton
-                saving={savingSection === 'personal'}
-                onClick={() => save('personal', {
-                  pronouns: personal.pronouns,
-                  dateOfBirth: personal.dateOfBirth || null,
-                  location: personal.location,
-                  permanentAddress: personal.permanentAddress,
-                  hobbies: personal.hobbies,
-                })}
-              />
+              )}
             </div>
           )}
 
-          {/* ── SOCIAL LINKS ── */}
+          {/* ════════ SOCIAL LINKS ════════ */}
           {activeSection === 'social' && (
             <div>
               <SectionHeader icon={Globe} title="Social Links" complete={isSectionComplete('social')} />
-              <div className="space-y-4">
-                {[
-                  { key: 'linkedinUrl', label: 'LinkedIn', icon: Linkedin, placeholder: 'https://www.linkedin.com/in/username/' },
-                  { key: 'githubUrl', label: 'GitHub', icon: Github, placeholder: 'https://github.com/username' },
-                  { key: 'twitterUrl', label: 'Twitter / X', icon: Twitter, placeholder: 'https://twitter.com/username' },
-                  { key: 'instagramUrl', label: 'Instagram', icon: Instagram, placeholder: 'https://www.instagram.com/username' },
-                  { key: 'facebookUrl', label: 'Facebook', icon: Facebook, placeholder: 'https://www.facebook.com/username' },
-                  { key: 'websiteUrl', label: 'Website / Portfolio', icon: Globe, placeholder: 'https://yourwebsite.com' },
-                ].map(({ key, label, icon: Icon, placeholder }) => (
-                  <div key={key} className="space-y-1.5 sm:grid sm:grid-cols-[140px_1fr] sm:gap-4 sm:items-center sm:space-y-0">
-                    <div className="flex items-center gap-2 text-sm text-[rgb(200,200,210)]">
-                      <Icon className="w-4 h-4 text-[rgb(100,100,110)]" />
-                      {label}
-                    </div>
-                    <Input
-                      value={(social as any)[key]}
-                      onChange={(e) => setSocial((s) => ({ ...s, [key]: e.target.value }))}
-                      placeholder={placeholder}
-                      className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white"
-                    />
+
+              {editable ? (
+                <div>
+                  <div className="space-y-4">
+                    {[
+                      { key: 'linkedinUrl', label: 'LinkedIn', icon: Linkedin, placeholder: 'https://www.linkedin.com/in/username/' },
+                      { key: 'githubUrl', label: 'GitHub', icon: Github, placeholder: 'https://github.com/username' },
+                      { key: 'twitterUrl', label: 'Twitter / X', icon: Twitter, placeholder: 'https://twitter.com/username' },
+                      { key: 'instagramUrl', label: 'Instagram', icon: Instagram, placeholder: 'https://www.instagram.com/username' },
+                      { key: 'facebookUrl', label: 'Facebook', icon: Facebook, placeholder: 'https://www.facebook.com/username' },
+                      { key: 'websiteUrl', label: 'Website / Portfolio', icon: Globe, placeholder: 'https://yourwebsite.com' },
+                    ].map(({ key, label, icon: Icon, placeholder }) => (
+                      <div key={key} className="space-y-1.5 sm:grid sm:grid-cols-[140px_1fr] sm:gap-4 sm:items-center sm:space-y-0">
+                        <div className="flex items-center gap-2 text-sm text-[rgb(200,200,210)]">
+                          <Icon className="w-4 h-4 text-[rgb(100,100,110)]" />
+                          {label}
+                        </div>
+                        <Input
+                          value={(social as any)[key]}
+                          onChange={(e) => setSocial((s) => ({ ...s, [key]: e.target.value }))}
+                          placeholder={placeholder}
+                          className="bg-[rgb(17,17,19)] border-[rgba(255,255,255,0.08)] text-white"
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <SaveButton saving={savingSection === 'social'} onClick={() => save('social', social)} />
+                  <SaveButton saving={savingSection === 'social'} onClick={() => save('social', social)} />
+                </div>
+              ) : (
+                socialLinksData.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {socialLinksData.map(({ url, icon: Icon, label }) => (
+                      <a
+                        key={label}
+                        href={url!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.06)] text-[rgb(180,180,190)] hover:text-white hover:border-[rgba(255,255,255,0.15)] transition-all"
+                      >
+                        <Icon className="w-3.5 h-3.5" /> {label}
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptySection message="No social links added yet." />
+                )
+              )}
             </div>
           )}
 
-          {/* Saved toast */}
-          {savedSection && (
+          {/* ── Saved toast (edit mode only) ── */}
+          {editable && savedSection && (
             <div className="mt-4 flex items-center gap-2 text-xs text-[#22C55E]">
               <CheckCircle2 className="w-4 h-4" /> Saved!
             </div>

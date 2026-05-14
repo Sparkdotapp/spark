@@ -86,6 +86,7 @@ export async function updateUserProfile(
     stackAuthId: string,
     data: {
         displayName?: string;
+        username?: string;
         firstName?: string;
         lastName?: string;
         bio?: string;
@@ -115,10 +116,14 @@ export async function updateUserProfile(
         facebookUrl?: string;
         websiteUrl?: string;
         dateOfBirth?: string | null;
+        onboardingDone?: boolean;
     }
 ): Promise<User> {
-    const { dateOfBirth, ...rest } = data;
+    const { dateOfBirth, onboardingDone, ...rest } = data;
     const updateData: Record<string, unknown> = { ...rest };
+    if (onboardingDone !== undefined) {
+        updateData.onboardingDone = onboardingDone;
+    }
     if (dateOfBirth !== undefined) {
         updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
     }
@@ -126,6 +131,25 @@ export async function updateUserProfile(
         where: { stackAuthId },
         data: updateData,
     });
+}
+
+/**
+ * Get a user by their username.
+ */
+export async function getUserByUsername(username: string): Promise<User | null> {
+    return prisma.user.findUnique({
+        where: { username },
+    });
+}
+
+/**
+ * Check if a username is available.
+ */
+export async function isUsernameAvailable(username: string, excludeUserId?: string): Promise<boolean> {
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (!existing) return true;
+    if (excludeUserId && existing.id === excludeUserId) return true;
+    return false;
 }
 
 /**

@@ -69,9 +69,11 @@ model User {
   id                String    @id @default(cuid())
   stackAuthId       String    @unique @map("stack_auth_id")
   email             String    @unique
+  username          String?   @unique
   displayName       String?   @map("display_name")
   profileImageUrl   String?   @map("profile_image_url")
   bio               String?
+  onboardingDone    Boolean   @default(false) @map("onboarding_done")
 
   // Name
   firstName         String?   @map("first_name")
@@ -508,12 +510,13 @@ model CommentLike {
 // REPOST
 // ============================================
 model Repost {
-  id        String   @id @default(cuid())
-  postId    String   @map("post_id")
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now()) @map("created_at")
+  id           String   @id @default(cuid())
+  postId       String   @map("post_id")
+  post         Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quoteContent String?  @map("quote_content")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   @@unique([postId, userId])
   @@index([postId])

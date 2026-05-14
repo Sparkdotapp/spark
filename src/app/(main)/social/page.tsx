@@ -15,6 +15,7 @@ interface Author {
   displayName: string | null;
   profileImageUrl: string | null;
   email: string;
+  username?: string | null;
 }
 
 interface PostData {
@@ -31,7 +32,9 @@ interface PostData {
     displayName: string | null;
     profileImageUrl: string | null;
     email: string;
+    username?: string | null;
     repostId: string;
+    quoteContent?: string | null;
   } | null;
   createdAt: string | Date;
   updatedAt: string | Date;

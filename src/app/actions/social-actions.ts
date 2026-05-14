@@ -45,6 +45,7 @@ export async function createPost(data: { content?: string; imageUrl?: string }) 
                         displayName: true,
                         profileImageUrl: true,
                         email: true,
+                        username: true,
                     },
                 },
                 _count: { select: { comments: true, likes: true, reposts: true } },
@@ -89,6 +90,7 @@ export async function updatePost(
                         displayName: true,
                         profileImageUrl: true,
                         email: true,
+                        username: true,
                     },
                 },
                 _count: { select: { comments: true, likes: true, reposts: true } },
@@ -135,6 +137,7 @@ export async function getPosts(cursor?: string, limit: number = 20) {
                     displayName: true,
                     profileImageUrl: true,
                     email: true,
+                    username: true,
                 },
             },
             _count: { select: { comments: true, likes: true, reposts: true } },
@@ -181,6 +184,7 @@ export async function getPosts(cursor?: string, limit: number = 20) {
                         displayName: true,
                         profileImageUrl: true,
                         email: true,
+                        username: true,
                     },
                 },
                 post: {
@@ -199,7 +203,9 @@ export async function getPosts(cursor?: string, limit: number = 20) {
                 displayName: string | null;
                 profileImageUrl: string | null;
                 email: string;
+                username: string | null;
                 repostId: string;
+                quoteContent: string | null;
             };
         };
 
@@ -226,7 +232,9 @@ export async function getPosts(cursor?: string, limit: number = 20) {
                     displayName: repost.user.displayName,
                     profileImageUrl: repost.user.profileImageUrl,
                     email: repost.user.email,
+                    username: (repost.user as any).username ?? null,
                     repostId: repost.id,
+                    quoteContent: repost.quoteContent ?? null,
                 },
             });
         }
@@ -277,6 +285,7 @@ export async function getPostComments(postId: string) {
                         displayName: true,
                         profileImageUrl: true,
                         email: true,
+                        username: true,
                     },
                 },
                 _count: { select: { likes: true } },
@@ -331,6 +340,7 @@ export async function createComment(postId: string, content: string) {
                         displayName: true,
                         profileImageUrl: true,
                         email: true,
+                        username: true,
                     },
                 },
             },
@@ -365,6 +375,7 @@ export async function updateComment(commentId: string, content: string) {
                         displayName: true,
                         profileImageUrl: true,
                         email: true,
+                        username: true,
                     },
                 },
             },
@@ -459,7 +470,7 @@ export async function toggleCommentLike(commentId: string) {
 // ============================================
 // REPOST TOGGLE
 // ============================================
-export async function toggleRepost(postId: string) {
+export async function toggleRepost(postId: string, quoteContent?: string) {
     try {
         const user = await getAuthenticatedUser();
 
@@ -476,12 +487,26 @@ export async function toggleRepost(postId: string) {
         });
 
         if (existingRepost) {
+            // If a quote is provided, update existing repost with the quote
+            if (quoteContent !== undefined) {
+                await prisma.repost.update({
+                    where: { id: existingRepost.id },
+                    data: { quoteContent: quoteContent?.trim() || null },
+                });
+                const count = await prisma.repost.count({ where: { postId } });
+                return { success: true, reposted: true, repostCount: count };
+            }
+            // Otherwise toggle off (undo repost)
             await prisma.repost.delete({ where: { id: existingRepost.id } });
             const count = await prisma.repost.count({ where: { postId } });
             return { success: true, reposted: false, repostCount: count };
         } else {
             await prisma.repost.create({
-                data: { postId, userId: user.id },
+                data: {
+                    postId,
+                    userId: user.id,
+                    quoteContent: quoteContent?.trim() || null,
+                },
             });
             const count = await prisma.repost.count({ where: { postId } });
             return { success: true, reposted: true, repostCount: count };
@@ -505,6 +530,7 @@ export async function getCurrentUser() {
                 displayName: user.displayName,
                 profileImageUrl: user.profileImageUrl,
                 email: user.email,
+                username: user.username,
             },
         };
     } catch {

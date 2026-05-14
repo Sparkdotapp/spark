@@ -2,22 +2,36 @@
 
 import { useEffect, Suspense } from 'react';
 import { useUser } from '@stackframe/stack';
-import { syncCurrentUser } from '@/app/actions/user-actions';
+import { usePathname, useRouter } from 'next/navigation';
+import { syncCurrentUser, getCurrentDbUser } from '@/app/actions/user-actions';
 
 /**
  * Internal component that handles the user sync logic
  */
 function UserSyncInner() {
     const user = useUser();
+    const pathname = usePathname();
+    const router = useRouter();
 
     useEffect(() => {
         if (user) {
             // Sync user with database when they're authenticated
-            syncCurrentUser().catch((error) => {
-                console.error('Failed to sync user with database:', error);
-            });
+            syncCurrentUser()
+                .then(() => {
+                    // Check if onboarding is needed
+                    if (pathname !== '/onboarding' && !pathname.startsWith('/handler')) {
+                        getCurrentDbUser().then((dbUser) => {
+                            if (dbUser && (!dbUser.onboardingDone || !dbUser.username)) {
+                                router.push('/onboarding');
+                            }
+                        });
+                    }
+                })
+                .catch((error) => {
+                    console.error('Failed to sync user with database:', error);
+                });
         }
-    }, [user?.id]); // Only re-run when user ID changes
+    }, [user?.id, pathname, router]); // Only re-run when user ID changes
 
     return null;
 }

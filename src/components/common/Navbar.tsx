@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, Menu, X, User, LogOut, ChevronDown, Settings } from 'lucide-react';
 import { useUser } from '@stackframe/stack';
 import Link from 'next/link';
+import { getCurrentDbUser } from '@/app/actions/user-actions';
 
 interface NavLink {
   label: string;
@@ -24,6 +25,7 @@ export const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [username, setUsername] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,6 +34,17 @@ export const Navbar = () => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Fetch username from DB
+  useEffect(() => {
+    if (user) {
+      getCurrentDbUser().then((dbUser) => {
+        if (dbUser?.username) setUsername(dbUser.username);
+      });
+    } else {
+      setUsername(null);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -111,7 +124,7 @@ export const Navbar = () => {
                       </div>
                       <div className="py-1.5">
                         <Link
-                          href="/profile"
+                          href={username ? `/${username}` : '/onboarding'}
                           onClick={() => setDropdownOpen(false)}
                           className="flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-[rgba(255,255,255,0.05)] transition-colors"
                         >
@@ -206,7 +219,7 @@ export const Navbar = () => {
                       My Events
                     </Link>
                     <Link
-                      href="/profile"
+                      href={username ? `/${username}` : '/onboarding'}
                       onClick={() => setMobileOpen(false)}
                       className="flex items-center gap-3 px-4 py-3 text-base font-medium rounded-xl border border-[rgba(255,255,255,0.1)] text-white transition-colors hover:bg-[rgba(255,255,255,0.04)]"
                     >
